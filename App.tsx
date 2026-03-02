@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import Header from './Header';
 import CourseCard from './CourseCard';
 import AITutor from './AITutor';
@@ -317,6 +318,7 @@ const App: React.FC = () => {
         </>
       )}
       <Analytics />
+      <SpeedInsights />
     </div>
   );
 };
