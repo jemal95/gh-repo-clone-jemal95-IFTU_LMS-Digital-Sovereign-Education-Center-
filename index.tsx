@@ -8,20 +8,20 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-// Safe Service Worker Registration
+// Service Worker registration removed to ensure reliable loading in dev environment
+/*
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // We use a relative path and catch errors gracefully to handle development sandbox origin issues
     navigator.serviceWorker.register('./sw.js', { scope: './' })
       .then(registration => {
         console.log('Sovereign SW registered: ', registration.scope);
       })
       .catch(registrationError => {
-        // Log as a warning in dev, as some sandboxes block SW origins
-        console.warn('Sovereign SW skipped or failed (common in dev sandboxes): ', registrationError.message);
+        console.warn('Sovereign SW skipped or failed: ', registrationError.message);
       });
   });
 }
+*/
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(

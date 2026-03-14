@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     const apiKey = env.GEMINI_API_KEY || env.API_KEY;
     return {
-      base: env.DEPLOY_TARGET === 'firebase' ? '/' : '/iftu-portal-/',
+      base: env.VITE_BASE_PATH || '/',
       server: {
         port: 3000,
         host: '0.0.0.0',

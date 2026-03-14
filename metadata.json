@@ -7,7 +7,7 @@
     "microphone",
     "geolocation"
   ],
-  "start_url": "/iftu-portal-/",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#fdfdfd",
   "theme_color": "#009b44",

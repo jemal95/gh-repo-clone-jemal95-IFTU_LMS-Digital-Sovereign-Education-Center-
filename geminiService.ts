@@ -9,7 +9,7 @@ const LANGUAGE_NAMES = {
 };
 
 export const askTutor = async (question: string, language: Language = 'en', context?: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -32,10 +32,10 @@ export const askTutor = async (question: string, language: Language = 'en', cont
  * Parses questions directly from a document (PDF or DOCX) using Gemini's multi-modal capabilities.
  */
 export const parseExamFromDocument = async (base64Data: string, mimeType: string): Promise<Partial<Question>[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3.1-pro-preview',
       contents: {
         parts: [
           {
@@ -75,7 +75,7 @@ export const parseExamFromDocument = async (base64Data: string, mimeType: string
 };
 
 export const getRegionalIntelligence = async (region: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -97,7 +97,7 @@ export const getRegionalIntelligence = async (region: string) => {
 };
 
 export const fetchLatestEducationNews = async () => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -115,7 +115,7 @@ export const fetchLatestEducationNews = async () => {
 };
 
 export const getLessonDeepDive = async (text: string, type: 'simpler' | 'advanced', language: Language = 'en') => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const prompt = type === 'simpler' ? `Simpler explanation of: ${text}` : `Advanced technical context for: ${text}`;
   try {
     const response = await ai.models.generateContent({
@@ -128,10 +128,10 @@ export const getLessonDeepDive = async (text: string, type: 'simpler' | 'advance
 };
 
 export const parseExamDocument = async (text: string): Promise<Partial<Question>[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3.1-pro-preview',
       contents: `Extract multiple-choice questions from: ${text}`,
       config: {
         responseMimeType: "application/json",
@@ -162,10 +162,10 @@ export const generateExamQuestions = async (
   questionTypes: string[],
   count: number = 5
 ): Promise<Partial<Question>[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3.1-pro-preview',
       contents: `Generate ${count} questions for Subject: ${subject}, Topic: ${topic}. 
       Difficulty Level: ${difficulty}. 
       Question Formats: ${questionTypes.join(', ')}.
@@ -207,10 +207,10 @@ export const generateExamQuestions = async (
 };
 
 export const findNearbyColleges = async (lat: number, lng: number, type: 'TVET' | 'High School' = 'TVET') => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-lite-latest',
+      model: 'gemini-3.1-flash-lite-preview',
       contents: `List 5 prominent ${type} institutions near lat: ${lat}, lng: ${lng}.`,
       config: {
         tools: [{ googleMaps: {} }],
