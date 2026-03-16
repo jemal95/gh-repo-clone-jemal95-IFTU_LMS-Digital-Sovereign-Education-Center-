@@ -1,0 +1,5 @@
+Initialize Git and Push to GitHubgit init
+git add .
+git commit -m "IFTU Sovereign Release v1.0"
+git remote add origin https://github.com/jemalfano030/iftu-portal.git
+git push -u origin main
