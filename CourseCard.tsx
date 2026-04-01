@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Course, Stream } from '../types';
+import { NATIONAL_CENTER_INFO } from '../constants';
 
 interface CourseCardProps {
   course: Course;
@@ -34,6 +35,58 @@ const CourseCard: React.FC<CourseCardProps> = ({
     [Stream.SOCIAL_SCIENCE]: { color: '#ffcd00', bg: 'bg-yellow-50', shadow: 'rgba(255, 205, 0, 1)', label: 'SOCIAL' },
     [Stream.GENERAL]: { color: '#009b44', bg: 'bg-green-50', shadow: 'rgba(0, 155, 68, 1)', label: 'CORE' }
   }[course.stream] || { color: '#000000', bg: 'bg-gray-50', shadow: 'rgba(0, 0, 0, 1)', label: 'GENERAL' };
+
+  const handleDownloadSyllabus = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const syllabusContent = `
+      ${NATIONAL_CENTER_INFO.name}
+      OFFICIAL COURSE SYLLABUS: ${course.title}
+      CODE: ${course.code}
+      INSTRUCTOR: ${course.instructor}
+      
+      DESCRIPTION:
+      ${course.description}
+      
+      MODULES:
+      ${course.lessons.map((l, i) => `${i + 1}. ${l.title} (${l.duration})`).join('\n      ')}
+      
+      This document is a certified digital artifact of the IFTU National Registry.
+      Authorized by: ${NATIONAL_CENTER_INFO.authorizedBy}
+    `;
+    
+    const blob = new Blob([syllabusContent], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${course.code}_Syllabus.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCacheCourse = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!('caches' in window)) {
+      alert("Offline caching is not supported in this browser.");
+      return;
+    }
+
+    try {
+      const cache = await caches.open('iftu-lms-courses');
+      const urlsToCache = [
+        course.thumbnail,
+        ...(course.lessons.map(l => l.videoUrl).filter(Boolean) as string[]),
+        ...(course.lessons.map(l => l.pdfUrl).filter(Boolean) as string[]),
+      ];
+      
+      await cache.addAll(urlsToCache);
+      alert(`${course.title} cached for offline access!`);
+    } catch (error) {
+      console.error("Caching failed:", error);
+      alert("Failed to cache some course materials. Check your connection.");
+    }
+  };
 
   const handleCardClick = () => {
     if (isLocked) {
@@ -125,8 +178,27 @@ const CourseCard: React.FC<CourseCardProps> = ({
               <p className="text-[10px] font-black uppercase italic">{course.instructor}</p>
             </div>
           </div>
-          <div className={`px-4 py-1.5 rounded-xl border-4 border-black font-black uppercase text-[9px] tracking-widest shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${branding.bg}`}>
-            {branding.label}
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex gap-2">
+              <button 
+                onClick={handleCacheCourse}
+                title="Download for Offline"
+                className="bg-blue-50 border-2 border-black p-1.5 rounded-lg hover:bg-blue-100 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </button>
+              <button 
+                onClick={handleDownloadSyllabus}
+                className="bg-white border-2 border-black px-3 py-1 rounded-lg font-black uppercase text-[8px] hover:bg-gray-100 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
+              >
+                📄 Syllabus
+              </button>
+            </div>
+            <div className={`px-4 py-1.5 rounded-xl border-4 border-black font-black uppercase text-[9px] tracking-widest shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${branding.bg}`}>
+              {branding.label}
+            </div>
           </div>
         </div>
       </div>

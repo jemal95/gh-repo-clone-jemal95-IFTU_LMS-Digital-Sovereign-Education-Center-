@@ -48,7 +48,7 @@ const LiveInterviewer: React.FC<LiveInterviewerProps> = ({ topic, onComplete, on
     const outputCtx = audioContextRef.current;
 
     const sessionPromise = ai.live.connect({
-      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+      model: 'gemini-2.5-flash-native-audio-preview-09-2025',
       callbacks: {
         onopen: () => {
           setStatus('active');

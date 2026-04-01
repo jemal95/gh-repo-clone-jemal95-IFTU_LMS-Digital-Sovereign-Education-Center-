@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Course, Lesson, Question, Language, User } from '../types';
+import { Play, Pause, Volume2, VolumeX, Maximize, RotateCcw } from 'lucide-react';
+import { Course, Lesson, Question, Language, User, AssignmentSubmission } from '../types';
 import { getLessonDeepDive } from '../services/geminiService';
 import { dbService } from '../services/dbService';
 import LiveInterviewer from './LiveInterviewer';
+import CertificatePortal from './CertificatePortal';
 
 const SovereignSkeleton: React.FC<{ className?: string }> = ({ className = "" }) => (
   <div className={`animate-pulse bg-gray-200 border-4 border-black/5 rounded-2xl ${className}`}>
@@ -14,9 +16,16 @@ const SovereignSkeleton: React.FC<{ className?: string }> = ({ className = "" })
 interface CustomVideoPlayerProps {
   src: string;
   title: string;
+  onEnded?: () => void;
 }
 
-const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({ src, title }) => {
+const formatTime = (time: number) => {
+  const minutes = Math.floor(time / 60);
+  const seconds = Math.floor(time % 60);
+  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+};
+
+const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({ src, title, onEnded }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -28,7 +37,7 @@ const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({ src, title }) => 
   const [showControls, setShowControls] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const controlsTimeoutRef = useRef<number | null>(null);
+  const controlsTimeoutRef = useRef<any>(null);
 
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
@@ -70,13 +79,26 @@ const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({ src, title }) => 
       if (src) setHasError(true);
       setIsInitialLoading(false);
     };
+    const handleVideoEnded = () => {
+      if (onEnded) onEnded();
+    };
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+
     video.addEventListener('timeupdate', updateTime);
     video.addEventListener('loadedmetadata', updateDuration);
     video.addEventListener('error', handleError);
+    video.addEventListener('ended', handleVideoEnded);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+
     return () => {
       video.removeEventListener('timeupdate', updateTime);
       video.removeEventListener('loadedmetadata', updateDuration);
       video.removeEventListener('error', handleError);
+      video.removeEventListener('ended', handleVideoEnded);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
     };
   }, [src, isYouTube]);
 
@@ -87,18 +109,132 @@ const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({ src, title }) => 
     }
   };
 
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    controlsTimeoutRef.current = setTimeout(() => {
+      if (isPlaying) setShowControls(false);
+    }, 3000);
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = (parseFloat(e.target.value) / 100) * duration;
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+    }
+    setProgress(parseFloat(e.target.value));
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setVolume(val);
+    if (videoRef.current) {
+      videoRef.current.volume = val;
+      videoRef.current.muted = val === 0;
+    }
+    setIsMuted(val === 0);
+  };
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      const newMuted = !isMuted;
+      videoRef.current.muted = newMuted;
+      setIsMuted(newMuted);
+      if (newMuted) setVolume(0);
+      else setVolume(videoRef.current.volume || 1);
+    }
+  };
+
+  const toggleFullScreen = () => {
+    if (containerRef.current) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        containerRef.current.requestFullscreen();
+      }
+    }
+  };
+
   return (
-    <div ref={containerRef} className="relative aspect-video w-full bg-black rounded-[3.5rem] border-[8px] border-black shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] overflow-hidden group">
+    <div 
+      ref={containerRef} 
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => isPlaying && setShowControls(false)}
+      className="relative aspect-video w-full bg-black rounded-[3.5rem] border-[8px] border-black shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] overflow-hidden group"
+    >
       {isInitialLoading && (
         <div className="absolute inset-0 z-20 bg-white p-8 flex flex-col items-center justify-center space-y-8">
           <div className="w-32 h-32 border-[12px] border-black border-t-blue-600 rounded-full animate-spin"></div>
           <p className="text-xl font-black uppercase italic tracking-tighter">Establishing Module Link...</p>
         </div>
       )}
+      
+      {hasError && (
+        <div className="absolute inset-0 z-20 bg-rose-50 p-8 flex flex-col items-center justify-center space-y-6 text-center">
+          <div className="text-6xl">⚠️</div>
+          <h3 className="text-2xl font-black uppercase italic tracking-tighter text-rose-600">Video Stream Interrupted</h3>
+          <p className="text-sm font-bold text-gray-500 uppercase">The resource at this address is currently unreachable.</p>
+          <button onClick={() => window.location.reload()} className="bg-black text-white px-8 py-3 rounded-xl font-black uppercase text-xs">Retry Connection</button>
+        </div>
+      )}
+
       {isYouTube && sanitizedSrc ? (
         <iframe className="w-full h-full" src={sanitizedSrc} title={title} frameBorder="0" allowFullScreen onLoad={() => setIsInitialLoading(false)}></iframe>
       ) : (
-        <video ref={videoRef} src={src} className="w-full h-full cursor-pointer" onClick={togglePlay} playsInline />
+        <>
+          <video ref={videoRef} src={src} className="w-full h-full cursor-pointer" onClick={togglePlay} playsInline />
+          
+          {/* Custom Controls */}
+          <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-8 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+            <div className="space-y-4">
+              {/* Seek Bar */}
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={progress} 
+                onChange={handleSeek}
+                className="w-full h-2 bg-white/30 rounded-full appearance-none cursor-pointer accent-blue-500"
+              />
+              
+              <div className="flex items-center justify-between text-white">
+                <div className="flex items-center gap-6">
+                  <button onClick={togglePlay} className="hover:scale-110 transition-transform">
+                    {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
+                  </button>
+                  
+                  <div className="flex items-center gap-3 group/volume">
+                    <button onClick={toggleMute}>
+                      {isMuted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                    </button>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="1" 
+                      step="0.1" 
+                      value={volume} 
+                      onChange={handleVolumeChange}
+                      className="w-0 group-hover/volume:w-24 transition-all h-1 bg-white/30 rounded-full appearance-none cursor-pointer accent-white"
+                    />
+                  </div>
+                  
+                  <span className="text-xs font-black font-mono">
+                    {formatTime(currentTime)} / {formatTime(duration)}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-6">
+                   <button onClick={() => { if(videoRef.current) videoRef.current.currentTime = 0; }} className="hover:rotate-[-45deg] transition-transform" title="Restart">
+                     <RotateCcw size={20} />
+                   </button>
+                   <button onClick={toggleFullScreen} className="hover:scale-110 transition-transform" title="Full Screen">
+                     <Maximize size={20} />
+                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -138,6 +274,97 @@ const SecurePDFViewer: React.FC<SecurePDFViewerProps> = ({ url, title }) => {
   );
 };
 
+interface LessonQuizProps {
+  questions: Question[];
+  onComplete: (score: number) => void;
+  onCancel: () => void;
+}
+
+const LessonQuiz: React.FC<LessonQuizProps> = ({ questions, onComplete, onCancel }) => {
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, number | string>>({});
+  const [showResults, setShowResults] = useState(false);
+
+  const currentQuestion = questions[currentIdx];
+
+  const handleAnswer = (answer: number | string) => {
+    setAnswers({ ...answers, [currentQuestion.id]: answer });
+  };
+
+  const nextQuestion = () => {
+    if (currentIdx < questions.length - 1) {
+      setCurrentIdx(currentIdx + 1);
+    } else {
+      setShowResults(true);
+    }
+  };
+
+  const calculateScore = () => {
+    let correct = 0;
+    questions.forEach(q => {
+      if (answers[q.id] === q.correctAnswer) correct++;
+    });
+    return Math.round((correct / questions.length) * 100);
+  };
+
+  if (showResults) {
+    const score = calculateScore();
+    return (
+      <div className="bg-white p-12 rounded-[3rem] border-8 border-black shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] text-center space-y-8 animate-scaleIn">
+        <div className="text-8xl">🎯</div>
+        <h3 className="text-4xl font-black uppercase italic tracking-tighter">Quiz Complete!</h3>
+        <div className="text-6xl font-black text-blue-600">{score}%</div>
+        <p className="text-xl font-bold text-gray-500 uppercase tracking-widest">
+          {score >= 70 ? 'Excellent Work! You have mastered this lesson.' : 'Good effort, but you might want to review the material again.'}
+        </p>
+        <div className="flex gap-4 justify-center">
+          <button onClick={onCancel} className="px-8 py-4 bg-gray-100 border-4 border-black rounded-2xl font-black uppercase text-sm">Review Lesson</button>
+          <button onClick={() => onComplete(score)} className="px-12 py-4 bg-black text-white border-4 border-black rounded-2xl font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(34,197,94,1)]">Continue →</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white p-12 rounded-[3rem] border-8 border-black shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] space-y-8 animate-fadeIn">
+      <div className="flex justify-between items-center border-b-4 border-black pb-4">
+        <span className="text-xs font-black uppercase tracking-widest text-gray-400">Question {currentIdx + 1} of {questions.length}</span>
+        <div className="flex gap-1">
+          {questions.map((_, i) => (
+            <div key={i} className={`w-8 h-2 rounded-full border-2 border-black ${i <= currentIdx ? 'bg-blue-600' : 'bg-gray-100'}`}></div>
+          ))}
+        </div>
+      </div>
+
+      <h4 className="text-2xl md:text-3xl font-black leading-tight">{currentQuestion.text}</h4>
+
+      <div className="grid gap-4">
+        {currentQuestion.options.map((opt, i) => (
+          <button
+            key={i}
+            onClick={() => handleAnswer(i)}
+            className={`w-full text-left p-6 rounded-2xl border-4 border-black font-black transition-all flex items-center gap-4 ${answers[currentQuestion.id] === i ? 'bg-blue-600 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-white hover:bg-gray-50'}`}
+          >
+            <span className="w-8 h-8 rounded-lg border-2 border-black flex items-center justify-center bg-black/10 text-xs">{String.fromCharCode(65 + i)}</span>
+            {opt}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex justify-between items-center pt-4">
+        <button onClick={onCancel} className="text-xs font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors">Exit Quiz</button>
+        <button 
+          onClick={nextQuestion}
+          disabled={answers[currentQuestion.id] === undefined}
+          className={`px-10 py-4 rounded-2xl border-4 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all ${answers[currentQuestion.id] === undefined ? 'bg-gray-100 text-gray-400 shadow-none' : 'bg-yellow-400 hover:translate-y-1'}`}
+        >
+          {currentIdx === questions.length - 1 ? 'Finish Quiz' : 'Next Question'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 interface CourseViewerProps {
   course: Course;
   initialLessonId?: string;
@@ -161,13 +388,79 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
   const [deepDive, setDeepDive] = useState<{ content: string; type: 'simpler' | 'advanced' | null }>({ content: '', type: null });
   const [isDeepDiving, setIsDeepDiving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showCertificate, setShowCertificate] = useState(false);
+  const [justCompletedId, setJustCompletedId] = useState<string | null>(null);
+  const [submission, setSubmission] = useState<AssignmentSubmission | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [showQuiz, setShowQuiz] = useState(false);
 
   const completedLessonIds = currentUser?.completedLessons || [];
 
-  const handleFinish = async (score?: number) => {
-    if (!activeLesson || !currentUser || isSyncing) return;
+  useEffect(() => {
+    const fetchSubmission = async () => {
+      if (activeLesson?.contentType === 'assignment' && currentUser) {
+        const sub = await dbService.fetchUserSubmission(activeLesson.id, currentUser.id);
+        setSubmission(sub);
+      } else {
+        setSubmission(null);
+      }
+    };
+    fetchSubmission();
+  }, [activeLesson, currentUser]);
 
-    const points = score || 50;
+  const handleAssignmentSubmit = async () => {
+    if (!activeLesson || !currentUser || !uploadFile) return;
+
+    setIsSubmitting(true);
+    try {
+      // Simulate file upload - in a real app, this would be Firebase Storage
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const fileUrl = reader.result as string; // Data URL for simulation
+        
+        const newSubmission: AssignmentSubmission = {
+          id: `sub-${Date.now()}`,
+          assignmentId: activeLesson.id,
+          studentId: currentUser.id,
+          studentName: currentUser.name,
+          submittedAt: new Date().toISOString(),
+          fileUrl: fileUrl,
+          status: 'submitted',
+        };
+
+        await dbService.syncSubmission(newSubmission);
+        setSubmission(newSubmission);
+        setUploadFile(null);
+        alert("Assignment Submitted Successfully!");
+        
+        // Mark lesson as complete after submission
+        handleFinish(100);
+      };
+      reader.readAsDataURL(uploadFile);
+    } catch (error) {
+      console.error("Submission failed:", error);
+      alert("Submission failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleFinish = async (score?: number) => {
+    if (!activeLesson || isSyncing) return;
+
+    if (!currentUser) {
+      alert("Please login to track your progress and earn points.");
+      return;
+    }
+
+    // If lesson has a quiz and we haven't shown it yet, show it
+    if (activeLesson.questions && activeLesson.questions.length > 0 && !showQuiz && !completedLessonIds.includes(activeLesson.id)) {
+      setShowQuiz(true);
+      return;
+    }
+
+    const points = score !== undefined ? Math.round(score / 2) : 50;
     
     // Check if already completed to avoid duplicate points/entries
     const isAlreadyCompleted = completedLessonIds.includes(activeLesson.id);
@@ -195,18 +488,27 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
       // Persist to database
       await dbService.syncUser(updatedUser);
 
+      setJustCompletedId(activeLesson.id);
+      setShowQuiz(false);
+      setTimeout(() => setJustCompletedId(null), 2000);
+
       // Move to next lesson or close
       const currentIdx = course.lessons.findIndex(l => l.id === activeLesson.id);
       if (currentIdx < course.lessons.length - 1) {
-        setActiveLesson(course.lessons[currentIdx + 1]);
-        setDeepDive({ content: '', type: null });
+        // Optional: show a small success message
+        setTimeout(() => {
+          setActiveLesson(course.lessons[currentIdx + 1]);
+          setDeepDive({ content: '', type: null });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 1500);
       } else if (isCourseComplete) {
-        alert("Course Mastery Achieved! All modules cataloged.");
-        onClose();
+        setTimeout(() => setShowCertificate(true), 1500);
+      } else {
+        setTimeout(() => alert("Lesson Completed! You have finished all lessons in this course."), 1500);
       }
     } catch (error) {
       console.error("Failed to sync completion:", error);
-      alert("National Registry Sync Interrupted. Please try again.");
+      alert("National Registry Sync Interrupted. Please check your connection.");
     } finally {
       setIsSyncing(false);
     }
@@ -225,6 +527,12 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
 
   return (
     <div className="fixed inset-0 z-[200] bg-white flex flex-col overflow-hidden animate-fadeIn no-select">
+      {justCompletedId === activeLesson.id && (
+        <div className="absolute top-40 left-1/2 -translate-x-1/2 z-[300] bg-green-500 text-white px-10 py-5 rounded-[2.5rem] border-4 border-black font-black uppercase text-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex items-center gap-4 animate-bounce">
+          <span className="text-4xl bg-white text-green-500 rounded-full w-10 h-10 flex items-center justify-center">✓</span>
+          Lesson Mastered!
+        </div>
+      )}
       <div className="h-24 md:h-32 border-b-8 border-black flex items-center justify-between px-8 md:px-16 bg-white z-20">
         <div className="flex items-center gap-6">
           <button onClick={onClose} className="w-16 h-16 bg-gray-50 border-4 border-black rounded-2xl flex items-center justify-center text-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">←</button>
@@ -243,7 +551,11 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
               {course.lessons.map((lesson, idx) => (
                 <button
                   key={idx}
-                  onClick={() => { setActiveLesson(lesson); setDeepDive({ content: '', type: null }); }}
+                  onClick={() => { 
+                    setActiveLesson(lesson); 
+                    setDeepDive({ content: '', type: null }); 
+                    setShowQuiz(false);
+                  }}
                   className={`w-full text-left p-6 rounded-[2rem] border-4 border-black font-black transition-all ${activeLesson.id === lesson.id ? 'bg-blue-600 text-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : completedLessonIds.includes(lesson.id) ? 'bg-green-50' : 'bg-white'}`}
                 >
                   {idx + 1}. {lesson.title}
@@ -255,13 +567,92 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
 
         <div className="flex-1 overflow-y-auto bg-[#f0f2f5] p-6 md:p-12">
           <div className="max-w-5xl mx-auto space-y-12 pb-24">
-            {/* Conditional Rendering for TVET Oral Assessment or Standard Content */}
+            {showQuiz && activeLesson.questions ? (
+              <LessonQuiz 
+                questions={activeLesson.questions} 
+                onComplete={handleFinish} 
+                onCancel={() => setShowQuiz(false)} 
+              />
+            ) : (
+              <>
+                {/* Conditional Rendering for TVET Oral Assessment or Standard Content */}
             {activeLesson.id.includes('oral') ? (
               <LiveInterviewer topic={activeLesson.title} onComplete={handleFinish} onCancel={onClose} />
             ) : (
               <>
                 {activeLesson.contentType === 'video' ? (
-                  <CustomVideoPlayer src={activeLesson.videoUrl || ''} title={activeLesson.title} />
+                  <CustomVideoPlayer 
+                    src={activeLesson.videoUrl || ''} 
+                    title={activeLesson.title} 
+                    onEnded={() => handleFinish()}
+                  />
+                ) : activeLesson.contentType === 'assignment' ? (
+                  <div className="w-full bg-white border-8 border-black rounded-[3.5rem] p-12 md:p-20 shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] space-y-10">
+                    <div className="flex items-center gap-8 border-b-8 border-black pb-8">
+                       <div className="w-24 h-24 bg-purple-600 text-white rounded-3xl border-4 border-black flex items-center justify-center text-5xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">📝</div>
+                       <div>
+                         <h3 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter">Assignment Portal</h3>
+                         <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Submit your work for evaluation</p>
+                       </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <h4 className="text-2xl font-black uppercase italic">Task Description</h4>
+                      <p className="text-xl leading-relaxed text-gray-700 bg-gray-50 p-8 rounded-3xl border-4 border-black">{activeLesson.content}</p>
+                    </div>
+
+                    {submission ? (
+                      <div className="bg-green-50 border-4 border-green-600 p-8 rounded-3xl space-y-4">
+                        <div className="flex items-center gap-4 text-green-700">
+                          <span className="text-3xl">✓</span>
+                          <h5 className="text-xl font-black uppercase italic">Work Submitted</h5>
+                        </div>
+                        <div className="flex justify-between items-center bg-white p-4 rounded-xl border-2 border-green-200">
+                          <p className="font-bold text-sm">Submitted on: {new Date(submission.submittedAt).toLocaleDateString()}</p>
+                          <a href={submission.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-black uppercase text-xs hover:underline">View Submission</a>
+                        </div>
+                        {submission.grade !== undefined && (
+                          <div className="mt-6 p-6 bg-white border-4 border-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <h6 className="text-lg font-black uppercase italic mb-2">Evaluation Result</h6>
+                            <div className="flex items-center gap-4">
+                              <span className="text-4xl font-black text-purple-600">{submission.grade}%</span>
+                              <p className="text-sm font-bold text-gray-500 italic">"{submission.feedback || 'No feedback provided.'}"</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-8">
+                        <div className="p-12 border-4 border-dashed border-black rounded-[3rem] bg-gray-50 flex flex-col items-center justify-center space-y-6 text-center">
+                          <div className="text-6xl">📤</div>
+                          <div>
+                            <p className="text-xl font-black uppercase italic">Upload your work</p>
+                            <p className="text-xs font-bold text-gray-400 uppercase">PDF, DOCX, or ZIP (Max 10MB)</p>
+                          </div>
+                          <input 
+                            type="file" 
+                            id="assignment-upload" 
+                            className="hidden" 
+                            onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                          />
+                          <label 
+                            htmlFor="assignment-upload" 
+                            className="px-10 py-4 bg-white border-4 border-black rounded-2xl font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-1 transition-all"
+                          >
+                            {uploadFile ? uploadFile.name : 'Select File'}
+                          </label>
+                        </div>
+
+                        <button 
+                          onClick={handleAssignmentSubmit}
+                          disabled={!uploadFile || isSubmitting}
+                          className={`w-full py-8 rounded-[2.5rem] border-8 border-black font-black uppercase text-2xl shadow-[12px_12px_0px_0px_rgba(147,51,234,1)] transition-all ${!uploadFile || isSubmitting ? 'bg-gray-200 text-gray-400 shadow-none' : 'bg-purple-600 text-white hover:translate-y-2'}`}
+                        >
+                          {isSubmitting ? 'Transmitting...' : 'Deploy Submission →'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <SecurePDFViewer url={activeLesson.pdfUrl || ''} title={activeLesson.title} />
                 )}
@@ -279,13 +670,20 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
                     <button 
                       onClick={() => handleFinish()} 
                       disabled={isSyncing}
-                      className={`px-20 py-8 rounded-[2.5rem] border-8 border-black font-black uppercase text-2xl transition-all ${
-                        completedLessonIds.includes(activeLesson.id) 
-                          ? 'bg-green-500 text-white shadow-none cursor-default' 
-                          : 'bg-black text-white shadow-[12px_12px_0px_0px_rgba(34,197,94,1)] hover:translate-y-2'
+                      className={`px-20 py-8 rounded-[2.5rem] border-8 border-black font-black uppercase text-2xl transition-all duration-500 ${
+                        !currentUser 
+                          ? 'bg-gray-200 text-gray-500 shadow-none'
+                          : completedLessonIds.includes(activeLesson.id) 
+                            ? `bg-green-500 text-white shadow-none cursor-default ${justCompletedId === activeLesson.id ? 'scale-105' : ''}` 
+                            : 'bg-black text-white shadow-[12px_12px_0px_0px_rgba(34,197,94,1)] hover:translate-y-2'
                       }`}
                     >
-                      {isSyncing ? 'Syncing...' : completedLessonIds.includes(activeLesson.id) ? 'Lesson Completed ✓' : 'Mark Complete →'}
+                      {isSyncing ? 'Syncing...' : !currentUser ? 'Login to Track Progress' : completedLessonIds.includes(activeLesson.id) ? (
+                        <span className="flex items-center gap-4">
+                          Lesson Completed 
+                          <span className={`inline-block ${justCompletedId === activeLesson.id ? 'animate-bounce text-4xl' : ''}`}>✓</span>
+                        </span>
+                      ) : 'Mark Complete →'}
                     </button>
                   </div>
                 </div>
@@ -298,9 +696,18 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
                 )}
               </>
             )}
-          </div>
-        </div>
+          </>
+        )}
       </div>
+    </div>
+  </div>
+      {showCertificate && currentUser && (
+        <CertificatePortal 
+          user={currentUser} 
+          course={course} 
+          onClose={() => { setShowCertificate(false); onClose(); }} 
+        />
+      )}
     </div>
   );
 };

@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import StudentProfile from './components/StudentProfile';
 import Header from './components/Header';
 import CourseCard from './components/CourseCard';
 import AITutor from './components/AITutor';
@@ -9,19 +10,23 @@ import Leaderboard from './components/Leaderboard';
 import AdminDashboard from './components/AdminDashboard';
 import TeacherDashboard from './components/TeacherDashboard';
 import PerformancePortal from './components/PerformancePortal';
-import RegistrationPortal from './components/RegistrationPortal';
 import AboutPortal from './components/AboutPortal';
 import CampusLocator from './components/CampusLocator';
 import DevPortal from './components/DevPortal';
+import ProjectReportPortal from './components/ProjectReportPortal';
+import FeedbackWidget from './components/FeedbackWidget';
 import { MOCK_COURSES, MOCK_NEWS, MOCK_EXAMS, SUMMER_STATS, SUMMER_ACTIVITIES } from './constants';
-import { Course, Grade, User, Exam, ExamResult, EducationLevel, Stream, Language, News } from './types';
+import { Course, Grade, User, Exam, ExamResult, EducationLevel, Stream, Language, News, Assignment, AssignmentSubmission } from './types';
 import { fetchLatestEducationNews } from './services/geminiService';
+import { auth } from './firebase';
+import { AssignmentPortal } from './components/AssignmentPortal';
+import { StudyHall } from './components/StudyHall';
 import { dbService } from './services/dbService';
 
 const TRANSLATIONS: Record<Language, Record<string, string>> = {
-  en: { home: 'Home', courses: 'Courses', exams: 'Exams', tutor: 'AI Tutor', about: 'About', news: 'News', locator: 'Locator', login: 'Login', register: 'Register', leaderboard: 'Rankings', performance: 'My Results', documentation: 'Guide' },
-  am: { home: 'መነሻ', courses: 'ትምህርቶች', exams: 'ፈተናዎች', tutor: 'AI ረዳት', about: 'ስለ እኛ', news: 'ዜና', locator: 'መፈለጊያ', login: 'ይግቡ', register: 'ይመዝገቡ', leaderboard: 'ደረጃዎች', performance: 'ውጤቴ', documentation: 'መመሪያ' },
-  om: { home: 'Mana', courses: 'Koorsoota', exams: 'Qormaata', tutor: 'Gargaaraa AI', about: "Waa'ee", news: 'Oduu', locator: 'Bakka', login: 'Seeni', register: 'Galmaa’i', leaderboard: 'Sadarkaa', performance: 'Bu’aa koo', documentation: 'Qajeelfama' }
+  en: { home: 'Home', courses: 'Courses', exams: 'Exams', assignments: 'Assignments', studyhall: 'Study Hall', tutor: 'AI Tutor', about: 'About', news: 'News', locator: 'Locator', login: 'Login', leaderboard: 'Rankings', performance: 'My Results', documentation: 'Guide', report: 'Project Report' },
+  am: { home: 'መነሻ', courses: 'ትምህርቶች', exams: 'ፈተናዎች', assignments: 'ተግባራት', studyhall: 'የጥናት አዳራሽ', tutor: 'AI ረዳት', about: 'ስለ እኛ', news: 'ዜና', locator: 'መፈለጊያ', login: 'ይግቡ', leaderboard: 'ደረጃዎች', performance: 'ውጤቴ', documentation: 'መመሪያ', report: 'የፕሮጀክት ሪፖርት' },
+  om: { home: 'Mana', courses: 'Koorsoota', exams: 'Qormaata', assignments: 'Hojiiwwan', studyhall: 'Mana Qo’annoo', tutor: 'Gargaaraa AI', about: "Waa'ee", news: 'Oduu', locator: 'Bakka', login: 'Seeni', leaderboard: 'Sadarkaa', performance: 'Bu’aa koo', documentation: 'Qajeelfama', report: 'Gabaasa Piroojektii' }
 };
 
 const INITIAL_USERS: User[] = [
@@ -46,7 +51,7 @@ const INITIAL_USERS: User[] = [
     role: 'teacher',
     points: 4200,
     status: 'active',
-    email: 'demoteach',
+    email: 'teacher@iftu.edu.et',
     joinedDate: '2024-05-01',
     preferredLanguage: 'en',
     badges: [{ id: 'b-t1', title: 'Senior Mentor', icon: '👨‍🏫', earnedAt: '2024-05-01' }],
@@ -68,7 +73,7 @@ const INITIAL_USERS: User[] = [
     level: EducationLevel.SECONDARY, 
     points: 3500, 
     status: 'active', 
-    email: 'demostu', 
+    email: 'student@iftu.edu.et', 
     joinedDate: '2024-06-10', 
     preferredLanguage: 'en', 
     badges: [{ id: 'b-s1', title: 'Early Achiever', icon: '⭐', earnedAt: '2024-06-15' }],
@@ -79,6 +84,29 @@ const INITIAL_USERS: User[] = [
     completedCourses: ['g11-phys-core'], 
     certificatesPaid: [],
     nid: 'ET-DEMO-STU', gender: 'Female', salary: 250, dob: '2008-01-01'
+  },
+  {
+    id: 'std-abdulkadir',
+    name: 'Abdulkadir Nure hinsene',
+    role: 'student',
+    grade: Grade.G12,
+    stream: Stream.NATURAL_SCIENCE,
+    level: EducationLevel.SECONDARY,
+    points: 0,
+    status: 'active',
+    email: '5890385378017045@students.iftu.edu.et',
+    joinedDate: '2026-03-20',
+    preferredLanguage: 'en',
+    badges: [],
+    school: 'National Digital Center',
+    photo: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Abdulkadir&backgroundColor=b6e3f4',
+    completedLessons: [],
+    completedExams: [],
+    completedCourses: [],
+    certificatesPaid: [],
+    nid: '5890385378017045',
+    gender: 'Male',
+    dob: '2007-05-15'
   },
   {
     id: 'tch-001',
@@ -113,52 +141,139 @@ const App: React.FC = () => {
   const [news, setNews] = useState<News[]>(MOCK_NEWS as News[]);
   const [currentLang, setCurrentLang] = useState<Language>('en');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isDemoSession, setIsDemoSession] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [activeExam, setActiveExam] = useState<Exam | null>(null);
   const [userResults, setUserResults] = useState<ExamResult[]>([]);
+  const [simulatedMessages, setSimulatedMessages] = useState<{id: string, text: string, date: string}[]>([]);
   const [viewingCourse, setViewingCourse] = useState<Course | null>(null);
   const [groundedNews, setGroundedNews] = useState<{ text: string, sources: any[] } | null>(null);
   const [isSyncingNews, setIsSyncingNews] = useState(false);
   const [allExamResults, setAllExamResults] = useState<ExamResult[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
+  const [courseSearch, setCourseSearch] = useState('');
+  const [gradeFilter, setGradeFilter] = useState<string>('all');
+  const [streamFilter, setStreamFilter] = useState<string>('all');
+  const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [dbError, setDbError] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadData = async () => {
-      const dbExams = await dbService.fetchExams();
-      if (dbExams && dbExams.length > 0) {
-        setExams(dbExams as Exam[]);
-      }
+    if (!isLoggedIn || !auth.currentUser) return;
 
-      const dbCourses = await dbService.fetchCourses();
-      if (dbCourses && dbCourses.length > 0) {
-        setCourses(dbCourses as Course[]);
-      }
-
-      const dbNews = await dbService.fetchNews();
-      if (dbNews && dbNews.length > 0) {
-        setNews(dbNews as News[]);
-      }
-      
-      const topStudents = await dbService.fetchTopStudents();
-      if (topStudents && topStudents.length > 0) {
-        // Merge with initial users to ensure demo accounts are still there
-        setUsers(prev => {
-          const merged = [...prev];
-          topStudents.forEach((s: any) => {
-            if (!merged.find(u => u.id === s.id)) {
-              merged.push(s as User);
-            }
-          });
-          return merged;
-        });
-      }
-
-      const dbResults = await dbService.fetchAllResults();
-      if (dbResults) setAllExamResults(dbResults as ExamResult[]);
+    const handleError = (err: any) => {
+      setDbError(err.message || "Database connection error");
     };
-    loadData();
 
+    const unsubExams = dbService.subscribeToExams((data) => {
+      if (data.length > 0) setExams(data);
+    }, handleError);
+
+    const unsubCourses = dbService.subscribeToCourses((data) => {
+      if (data.length > 0) setCourses(data);
+    }, handleError);
+
+    const unsubNews = dbService.subscribeToNews((data) => {
+      if (data.length > 0) setNews(data);
+    }, handleError);
+
+    const unsubUsers = dbService.subscribeToUsers(async (data) => {
+      if (data.length > 0) {
+        setUsers(data);
+        // Sync INITIAL_USERS to Firestore if they don't exist
+        for (const initialUser of INITIAL_USERS) {
+          if (!data.find(u => u.id === initialUser.id || u.email === initialUser.email)) {
+            await dbService.syncUser(initialUser);
+          }
+        }
+      }
+    }, handleError);
+
+    const unsubResults = dbService.subscribeToExamResults((data) => {
+      setAllExamResults(data);
+      if (currentUser) {
+        setUserResults(data.filter(r => r.studentId === currentUser.id));
+      }
+    }, handleError);
+
+    const unsubAssignments = dbService.subscribeToAssignments((data) => {
+      setAssignments(data);
+    }, handleError);
+
+    const unsubSubmissions = dbService.subscribeToSubmissions((data) => {
+      setSubmissions(data);
+    }, handleError);
+
+    return () => {
+      unsubExams();
+      unsubCourses();
+      unsubNews();
+      unsubUsers();
+      unsubResults();
+      unsubAssignments();
+      unsubSubmissions();
+    };
+  }, [isLoggedIn, currentUser?.id]);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (authUser) => {
+      if (authUser) {
+        setIsDemoSession(false); // Real auth takes over
+        // User is signed in, fetch profile
+        try {
+          let profile = await dbService.fetchUserProfile(authUser.uid);
+          
+          if (!profile) {
+            // Check if this is the admin email
+            const isDefaultAdmin = authUser.email === 'jemalfano030@gmail.com';
+            profile = {
+              id: authUser.uid,
+              name: authUser.displayName || 'New User',
+              role: isDefaultAdmin ? 'admin' : 'student',
+              points: 0,
+              status: 'active',
+              email: authUser.email || '',
+              joinedDate: new Date().toISOString().split('T')[0],
+              preferredLanguage: 'en',
+              badges: [],
+              photo: authUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.uid}&backgroundColor=b6e3f4`,
+              completedExams: [],
+              completedCourses: [],
+              certificatesPaid: [],
+              nid: `G-${authUser.uid.substring(0, 8)}`,
+              gender: 'Other',
+              dob: '2000-01-01'
+            };
+            await dbService.syncUser(profile);
+          } else if (authUser.email === 'jemalfano030@gmail.com' && profile.role !== 'admin') {
+            // Force admin role for this specific email if it's not already
+            profile.role = 'admin';
+            await dbService.syncUser(profile);
+          }
+
+          setCurrentUser(profile as User);
+          setIsLoggedIn(true);
+          
+          if (activeView === 'login') {
+            setActiveView(profile.role === 'admin' ? 'admin' : profile.role === 'teacher' || profile.role === 'teaching_assistant' ? 'teacher' : 'home');
+          }
+        } catch (err) {
+          console.error("Error restoring session:", err);
+        }
+      } else if (!isDemoSession) {
+        // User is signed out and not in a demo session
+        setIsLoggedIn(false);
+        setCurrentUser(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [activeView]);
+
+  useEffect(() => {
     const handleSyncStatus = () => setIsOnline(navigator.onLine);
     window.addEventListener('online', handleSyncStatus);
     window.addEventListener('offline', handleSyncStatus);
@@ -170,25 +285,94 @@ const App: React.FC = () => {
 
   const t = (key: string) => TRANSLATIONS[currentLang][key] || key;
 
+  const handleGoogleLogin = async () => {
+    setIsAuthenticating(true);
+    setAuthError(null);
+    try {
+      const { user: authUser, error } = await dbService.signInWithGoogle();
+      
+      if (authUser) {
+        setAuthError(null);
+        let profile = await dbService.fetchUserProfile(authUser.id);
+        
+        if (!profile) {
+          // Create a new user profile if it doesn't exist
+          const isDefaultAdmin = authUser.email === 'jemalfano030@gmail.com';
+          profile = {
+            id: authUser.id,
+            name: authUser.name || 'New User',
+            role: isDefaultAdmin ? 'admin' : 'student',
+            points: 0,
+            status: 'active',
+            email: authUser.email || '',
+            joinedDate: new Date().toISOString().split('T')[0],
+            preferredLanguage: 'en',
+            badges: [],
+            photo: authUser.photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.id}&backgroundColor=b6e3f4`,
+            completedExams: [],
+            completedCourses: [],
+            certificatesPaid: [],
+            nid: `G-${authUser.id.substring(0, 8)}`,
+            gender: 'Other',
+            dob: '2000-01-01'
+          };
+          await dbService.syncUser(profile);
+        }
+
+        setIsLoggedIn(true);
+        setCurrentUser(profile as User);
+        setActiveView(profile.role === 'admin' ? 'admin' : profile.role === 'teacher' || profile.role === 'teaching_assistant' ? 'teacher' : 'home');
+        
+        const results = await dbService.fetchResults(profile.id);
+        if (results) setUserResults(results as any);
+      } else if (error) {
+        setAuthError(error.message || "Google Sign-In failed.");
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthError("Authentication failed.");
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
   const handleLogin = async (e?: React.FormEvent, overrideEmail?: string, overridePassword?: string) => {
     if (e) e.preventDefault();
-    const targetEmail = overrideEmail || loginEmail;
+    const targetEmail = (overrideEmail || loginEmail).trim().toLowerCase();
     const targetPassword = overridePassword || loginPassword;
     setIsAuthenticating(true);
+    setAuthError(null);
     
     try {
-      // 1. Try Supabase Auth first
+      // 1. Check for Demo Accounts first (Bypass real auth for demo)
+      const demoEmails = ['teacher@iftu.edu.et', 'student@iftu.edu.et', 'admin@iftu.edu.et', '5890385378017045@students.iftu.edu.et', 'barataa@iftu.edu.et', 'demoteach', 'demostu'];
+      const isDemo = demoEmails.includes(targetEmail);
+      
+      if (isDemo && targetPassword === 'demo') {
+        const localUser = users.find(u => u.email.toLowerCase() === targetEmail || (targetEmail === 'demoteach' && u.email === 'teacher@iftu.edu.et') || (targetEmail === 'demostu' && u.email === 'student@iftu.edu.et')) 
+          || INITIAL_USERS.find(u => u.email.toLowerCase() === targetEmail || (targetEmail === 'demoteach' && u.email === 'teacher@iftu.edu.et') || (targetEmail === 'demostu' && u.email === 'student@iftu.edu.et'));
+        
+        if (localUser) {
+          setIsDemoSession(true);
+          setIsLoggedIn(true);
+          setCurrentUser(localUser);
+          setActiveView(localUser.role === 'admin' ? 'admin' : localUser.role === 'teacher' || localUser.role === 'teaching_assistant' ? 'teacher' : 'home');
+          setIsAuthenticating(false);
+          return;
+        }
+      }
+
+      // 2. Try Real Auth
       const { user: authUser, error } = await dbService.signIn(targetEmail, targetPassword);
       
       if (authUser) {
-        // 2. Fetch full profile from users table
+        setAuthError(null);
         const profile = await dbService.fetchUserProfile(authUser.id);
         if (profile) {
           setIsLoggedIn(true);
           setCurrentUser(profile as User);
           setActiveView(profile.role === 'admin' ? 'admin' : profile.role === 'teacher' ? 'teacher' : 'home');
           
-          // Fetch results
           const results = await dbService.fetchResults(profile.id);
           if (results) setUserResults(results as any);
           setIsAuthenticating(false);
@@ -196,20 +380,23 @@ const App: React.FC = () => {
         }
       }
 
-      // 3. Fallback to Mock Users for demo accounts (demoteach, demostu)
-      const mockUser = users.find(u => u.email.toLowerCase() === targetEmail.toLowerCase());
-      if (mockUser && (targetEmail === 'demoteach' || targetEmail === 'demostu' || targetEmail === 'admin@iftu.edu.et')) {
-        setIsLoggedIn(true);
-        setCurrentUser(mockUser);
-        setActiveView(mockUser.role === 'admin' ? 'admin' : mockUser.role === 'teacher' ? 'teacher' : 'home');
-        setIsAuthenticating(false);
-        return;
+      // 3. Fallback to Local Users (for new students or offline mode)
+      const localUser = users.find(u => u.email.toLowerCase() === targetEmail);
+      if (localUser) {
+        const isCorrectPassword = targetPassword === localUser.nid || targetPassword === 'demo';
+        if (isCorrectPassword) {
+          setIsLoggedIn(true);
+          setCurrentUser(localUser);
+          setActiveView(localUser.role === 'admin' ? 'admin' : localUser.role === 'teacher' || localUser.role === 'teaching_assistant' ? 'teacher' : 'home');
+          setIsAuthenticating(false);
+          return;
+        }
       }
 
-      alert(error?.message || "ERROR: Identity not found or invalid credentials.");
+      setAuthError(error?.message || "ERROR: Identity not found or invalid credentials.");
     } catch (err) {
       console.error(err);
-      alert("Authentication failed.");
+      setAuthError("Authentication failed.");
     } finally {
       setIsAuthenticating(false);
     }
@@ -234,6 +421,11 @@ const App: React.FC = () => {
           </h2>
           
           <div className="space-y-8 max-w-md mx-auto">
+            {authError && (
+              <div className="p-6 bg-red-100 border-4 border-red-600 text-red-600 rounded-[2rem] font-black uppercase text-sm animate-bounce">
+                ⚠️ {authError}
+              </div>
+            )}
             <div className="relative">
               <input 
                 type="email" 
@@ -243,6 +435,16 @@ const App: React.FC = () => {
                 onChange={(e) => setLoginEmail(e.target.value)}
               />
             </div>
+            <div className="relative">
+              <input 
+                type="password" 
+                placeholder="Registry Password" 
+                className="w-full p-8 bg-white border-8 border-black rounded-[2.5rem] font-black text-xl outline-none focus:shadow-[8px_8px_0px_0px_rgba(59,130,246,1)] transition-all"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+              />
+              <p className="text-[10px] font-black text-gray-400 uppercase mt-2 text-left ml-4 italic">Students: Use your National ID (NID) as password</p>
+            </div>
             <button 
               onClick={() => handleLogin()}
               disabled={isAuthenticating}
@@ -250,23 +452,36 @@ const App: React.FC = () => {
             >
               {isAuthenticating ? 'AUTHENTICATING...' : 'ACCESS REGISTRY →'}
             </button>
+            <button 
+              onClick={handleGoogleLogin}
+              disabled={isAuthenticating}
+              className="w-full py-8 bg-white text-black rounded-[2.5rem] border-8 border-black font-black uppercase text-2xl shadow-[12px_12px_0px_0px_rgba(239,68,68,1)] hover:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-4"
+            >
+              <svg className="w-8 h-8" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+              SIGN IN WITH GOOGLE
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-12 border-t-8 border-black/5">
              <button 
-               onClick={() => handleLogin(undefined, 'admin@iftu.edu.et')} 
+               onClick={() => handleLogin(undefined, 'admin@iftu.edu.et', 'demo')} 
                className="p-6 bg-purple-100 border-4 border-black rounded-[2.5rem] font-black uppercase text-[10px] hover:bg-purple-200 transition-all flex items-center justify-center gap-4"
              >
                <span className="text-2xl">👑</span> Admin Demo
              </button>
              <button 
-               onClick={() => handleLogin(undefined, 'demoteach')} 
+               onClick={() => handleLogin(undefined, 'teacher@iftu.edu.et', 'demo')} 
                className="p-6 bg-orange-100 border-4 border-black rounded-[2.5rem] font-black uppercase text-[10px] hover:bg-orange-200 transition-all flex items-center justify-center gap-4"
              >
                <span className="text-2xl">👨‍🏫</span> Teacher Demo
              </button>
              <button 
-               onClick={() => handleLogin(undefined, 'demostu')} 
+               onClick={() => handleLogin(undefined, 'student@iftu.edu.et', 'demo')} 
                className="p-6 bg-blue-100 border-4 border-black rounded-[2.5rem] font-black uppercase text-[10px] hover:bg-blue-200 transition-all flex items-center justify-center gap-4"
              >
                <span className="text-2xl">🎓</span> Student Demo
@@ -280,38 +495,6 @@ const App: React.FC = () => {
       </div>
     );
 
-    if (activeView === 'register') return <RegistrationPortal onRegister={async (u, password) => { 
-      setIsAuthenticating(true);
-      try {
-        const { user: authUser, session, error } = await dbService.signUp(u.email, password, u);
-        
-        if (error) {
-          alert(`REGISTRATION FAILED: ${error.message}`);
-          setIsAuthenticating(false);
-          return;
-        }
-
-        if (authUser) {
-          // If session is null, email confirmation is required
-          if (!session && !authUser.email_confirmed_at) {
-            alert("REGISTRATION SUCCESSFUL! Please check your email and click the confirmation link before logging in.");
-            setActiveView('login');
-          } else {
-            const fullUser = { ...u, id: authUser.id };
-            setUsers([...users, fullUser]); 
-            setCurrentUser(fullUser); 
-            setIsLoggedIn(true); 
-            setActiveView('home'); 
-          }
-        }
-      } catch (err) {
-        console.error(err);
-        alert("An unexpected error occurred during registration.");
-      } finally {
-        setIsAuthenticating(false);
-      }
-    }} onCancel={() => setActiveView('login')} />;
-
     if (isLoggedIn) {
       if (activeView === 'admin' && currentUser?.role === 'admin') {
         return (
@@ -319,15 +502,22 @@ const App: React.FC = () => {
             users={users} 
             courses={courses} 
             exams={exams} 
+            initialAssignments={assignments}
+            initialSubmissions={submissions}
             news={news} 
             examResults={allExamResults}
             onUpdateUser={async (u) => {
               setUsers(users.map(usr => usr.id === u.id ? u : usr));
               await dbService.syncUser(u);
             }} 
-            onAddUser={async (u) => {
+            onAddUser={async (u, password) => {
               setUsers([...users, u]);
-              await dbService.syncUser(u);
+              if (password) {
+                // For new users created by admin (like students with NID as password)
+                await dbService.signUp(u.email, password, u);
+              } else {
+                await dbService.syncUser(u);
+              }
             }} 
             onDeleteUser={async (id) => {
               setUsers(users.filter(u => u.id !== id));
@@ -348,6 +538,18 @@ const App: React.FC = () => {
             onAddNews={async (n) => {
               setNews([n, ...news]);
               await dbService.syncNews(n);
+              // Notify all students
+              const students = users.filter(u => u.role === 'student');
+              for (const student of students) {
+                await dbService.createNotification({
+                  userId: student.id,
+                  title: 'New Bulletin Published',
+                  message: n.title,
+                  type: 'assignment', // Using assignment type as a generic for now, or I should add 'news'
+                  isRead: false,
+                  createdAt: new Date().toISOString()
+                });
+              }
             }}
             onUpdateNews={async (n) => {
               setNews(news.map(bulletin => bulletin.id === n.id ? n : bulletin));
@@ -357,20 +559,73 @@ const App: React.FC = () => {
               setNews(news.filter(n => n.id !== id));
               await dbService.deleteNews(id);
             }}
+            onAddAssignment={async (a) => {
+              setAssignments([...assignments, a]);
+              await dbService.syncAssignment(a);
+              // Notify students in the relevant grade/stream
+              const course = courses.find(c => c.code === a.courseCode);
+              if (course) {
+                const targetStudents = users.filter(u => 
+                  u.role === 'student' && 
+                  u.grade === course.grade && 
+                  (course.stream === Stream.GENERAL || u.stream === course.stream)
+                );
+                for (const student of targetStudents) {
+                  await dbService.createNotification({
+                    userId: student.id,
+                    title: 'New Assignment',
+                    message: `${a.title} - Due: ${new Date(a.dueDate).toLocaleDateString()}`,
+                    type: 'assignment',
+                    isRead: false,
+                    createdAt: new Date().toISOString()
+                  });
+                }
+              }
+            }}
+            onUpdateAssignment={async (a) => {
+              setAssignments(assignments.map(item => item.id === a.id ? a : item));
+              await dbService.syncAssignment(a);
+            }}
+            onDeleteAssignment={async (id) => {
+              setAssignments(assignments.filter(a => a.id !== id));
+              await dbService.deleteAssignment(id);
+            }}
+            onUpdateSubmission={async (s) => {
+              setSubmissions(submissions.map(item => item.id === s.id ? s : item));
+              await dbService.syncSubmission(s);
+              // Notify student if graded
+              if (s.status === 'graded') {
+                await dbService.createNotification({
+                  userId: s.studentId,
+                  title: 'Assignment Graded',
+                  message: `Your submission for assignment ID ${s.assignmentId} has been graded. Score: ${s.grade}/${s.points || '?'}`,
+                  type: 'grade',
+                  isRead: false,
+                  createdAt: new Date().toISOString()
+                });
+              }
+            }}
+            onSendSMS={(to, msg) => {
+              setSimulatedMessages(prev => [{ id: Date.now().toString(), text: msg, date: new Date().toLocaleTimeString() }, ...prev]);
+            }}
             onNavClick={setActiveView}
           />
         );
       }
-      if (activeView === 'teacher' && currentUser?.role === 'teacher') {
+      if ((activeView === 'teacher' || activeView === 'admin') && (currentUser?.role === 'teacher' || currentUser?.role === 'teaching_assistant' || currentUser?.role === 'content_creator')) {
         return (
           <TeacherDashboard 
+            currentUser={currentUser}
             exams={exams} 
             courses={courses}
             onAddExam={async (ex) => { 
               setExams([...exams, ex]); 
               await dbService.syncExam(ex);
             }} 
-            onDeleteExam={(id) => setExams(exams.filter(e => e.id !== id))} 
+            onDeleteExam={async (id) => {
+              setExams(exams.filter(e => e.id !== id));
+              await dbService.deleteExam(id);
+            }} 
             onUpdateExam={async (ex) => {
               setExams(exams.map(e => e.id === ex.id ? ex : e));
               await dbService.syncExam(ex);
@@ -387,6 +642,52 @@ const App: React.FC = () => {
               setCourses(courses.map(crs => crs.id === c.id ? c : crs));
               await dbService.syncCourse(c);
             }}
+            onAddAssignment={async (a) => {
+              setAssignments([...assignments, a]);
+              await dbService.syncAssignment(a);
+              // Notify students in the relevant grade/stream
+              const course = courses.find(c => c.code === a.courseCode);
+              if (course) {
+                const targetStudents = users.filter(u => 
+                  u.role === 'student' && 
+                  u.grade === course.grade && 
+                  (course.stream === Stream.GENERAL || u.stream === course.stream)
+                );
+                for (const student of targetStudents) {
+                  await dbService.createNotification({
+                    userId: student.id,
+                    title: 'New Assignment',
+                    message: `${a.title} - Due: ${new Date(a.dueDate).toLocaleDateString()}`,
+                    type: 'assignment',
+                    isRead: false,
+                    createdAt: new Date().toISOString()
+                  });
+                }
+              }
+            }}
+            onUpdateAssignment={async (a) => {
+              setAssignments(assignments.map(item => item.id === a.id ? a : item));
+              await dbService.syncAssignment(a);
+            }}
+            onDeleteAssignment={async (id) => {
+              setAssignments(assignments.filter(a => a.id !== id));
+              await dbService.deleteAssignment(id);
+            }}
+            onUpdateSubmission={async (s) => {
+              setSubmissions(submissions.map(item => item.id === s.id ? s : item));
+              await dbService.syncSubmission(s);
+              // Notify student if graded
+              if (s.status === 'graded') {
+                await dbService.createNotification({
+                  userId: s.studentId,
+                  title: 'Assignment Graded',
+                  message: `Your submission for assignment ID ${s.assignmentId} has been graded. Score: ${s.grade}/${s.points || '?'}`,
+                  type: 'grade',
+                  isRead: false,
+                  createdAt: new Date().toISOString()
+                });
+              }
+            }}
           />
         );
       }
@@ -394,21 +695,103 @@ const App: React.FC = () => {
 
     switch(activeView) {
       case 'courses':
+        const filteredCourses = courses.filter(c => {
+          const matchesSearch = c.title.toLowerCase().includes(courseSearch.toLowerCase()) || 
+                               c.code.toLowerCase().includes(courseSearch.toLowerCase()) ||
+                               c.subject.toLowerCase().includes(courseSearch.toLowerCase());
+          
+          // If student is logged in, only show courses matching their profile by default
+          const isStudent = currentUser?.role === 'student';
+          const matchesGrade = gradeFilter === 'all' ? (isStudent ? c.grade === currentUser.grade : true) : c.grade === gradeFilter;
+          const matchesStream = streamFilter === 'all' ? (isStudent ? (c.stream === currentUser.stream || c.stream === Stream.GENERAL) : true) : c.stream === streamFilter;
+          const matchesLevel = isStudent ? c.level === currentUser.level : true;
+          const matchesSubject = subjectFilter === 'all' || c.subject === subjectFilter;
+          
+          return matchesSearch && matchesGrade && matchesStream && matchesSubject && matchesLevel;
+        });
+
+        const subjects = Array.from(new Set(courses.map(c => c.subject)));
+
         return (
           <div className="space-y-16 animate-fadeIn">
-            <h2 className="text-9xl font-black uppercase italic tracking-tighter leading-none text-blue-900">Catalogue.</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
-              {courses.map(c => (
-                <CourseCard 
-                  key={c.id} 
-                  course={c} 
-                  userRole={currentUser?.role}
-                  onClick={(crs) => isLoggedIn ? setViewingCourse(crs) : setActiveView('login')} 
-                  completedLessonIds={currentUser?.completedLessons}
-                  completedCourseIds={currentUser?.completedCourses}
+            <div className="flex flex-col md:flex-row justify-between items-end gap-10">
+              <h2 className="text-9xl font-black uppercase italic tracking-tighter leading-none text-blue-900">Catalogue.</h2>
+              <div className="w-full md:w-96">
+                <input 
+                  type="text" 
+                  placeholder="Search Modules..." 
+                  className="w-full p-6 bg-white border-8 border-black rounded-[2rem] font-black text-xl outline-none focus:shadow-[8px_8px_0px_0px_rgba(59,130,246,1)] transition-all"
+                  value={courseSearch}
+                  onChange={(e) => setCourseSearch(e.target.value)}
                 />
-              ))}
+              </div>
             </div>
+
+            <div className="flex flex-wrap gap-6 bg-gray-50 p-8 rounded-[3rem] border-4 border-black">
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Grade Level</label>
+                 <select 
+                   className="p-4 bg-white border-4 border-black rounded-2xl font-black uppercase text-xs outline-none"
+                   value={gradeFilter}
+                   onChange={(e) => setGradeFilter(e.target.value)}
+                 >
+                   <option value="all">All Grades</option>
+                   {Object.values(Grade).map(g => <option key={g} value={g}>{g}</option>)}
+                 </select>
+               </div>
+
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Stream</label>
+                 <select 
+                   className="p-4 bg-white border-4 border-black rounded-2xl font-black uppercase text-xs outline-none"
+                   value={streamFilter}
+                   onChange={(e) => setStreamFilter(e.target.value)}
+                 >
+                   <option value="all">All Streams</option>
+                   {Object.values(Stream).map(s => <option key={s} value={s}>{s}</option>)}
+                 </select>
+               </div>
+
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Subject</label>
+                 <select 
+                   className="p-4 bg-white border-4 border-black rounded-2xl font-black uppercase text-xs outline-none"
+                   value={subjectFilter}
+                   onChange={(e) => setSubjectFilter(e.target.value)}
+                 >
+                   <option value="all">All Subjects</option>
+                   {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+                 </select>
+               </div>
+
+               <button 
+                 onClick={() => { setCourseSearch(''); setGradeFilter('all'); setStreamFilter('all'); setSubjectFilter('all'); }}
+                 className="mt-auto p-4 bg-black text-white border-4 border-black rounded-2xl font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] active:translate-y-1 transition-all"
+               >
+                 Reset Filters
+               </button>
+            </div>
+
+            {filteredCourses.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
+                {filteredCourses.map(c => (
+                  <CourseCard 
+                    key={c.id} 
+                    course={c} 
+                    userRole={currentUser?.role}
+                    onClick={(crs) => isLoggedIn ? setViewingCourse(crs) : setActiveView('login')} 
+                    completedLessonIds={currentUser?.completedLessons}
+                    completedCourseIds={currentUser?.completedCourses}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="py-32 text-center space-y-8">
+                <div className="text-9xl grayscale opacity-20">🔍</div>
+                <h3 className="text-5xl font-black uppercase italic tracking-tighter text-gray-400">No Modules Cataloged.</h3>
+                <p className="text-xl font-bold text-gray-400 uppercase">Adjust your search or filters to find educational artifacts.</p>
+              </div>
+            )}
           </div>
         );
       case 'news':
@@ -443,16 +826,32 @@ const App: React.FC = () => {
           </div>
         );
       case 'exams':
+        const filteredExams = exams.filter(ex => {
+          if (currentUser?.role !== 'student') return true;
+          return ex.grade === currentUser.grade && (ex.stream === currentUser.stream || ex.stream === Stream.GENERAL);
+        });
         return (
           <div className="max-w-4xl mx-auto space-y-16 py-12 animate-fadeIn">
             <h2 className="text-8xl font-black uppercase italic tracking-tighter text-blue-900 leading-none">Mock Sessions.</h2>
             <div className="grid grid-cols-1 gap-8">
-              {exams.map(ex => (
+              {filteredExams.map(ex => (
                 <div key={ex.id} className="bg-white p-10 md:p-12 rounded-[3.5rem] border-8 border-black shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row justify-between items-center gap-8 hover:translate-x-2 transition-all">
-                  <h3 className="text-3xl md:text-4xl font-black uppercase italic leading-none tracking-tight">{ex.title}</h3>
-                  <button onClick={() => isLoggedIn ? setActiveExam(ex) : setActiveView('login')} className="px-12 py-5 bg-black text-white rounded-2xl border-4 border-black font-black uppercase text-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] active:translate-y-1">Launch</button>
+                  <div className="space-y-2">
+                    <h3 className="text-3xl md:text-4xl font-black uppercase italic leading-none tracking-tight">{ex.title}</h3>
+                    <div className="flex gap-4">
+                      <span className="text-[10px] font-black uppercase bg-blue-100 text-blue-600 px-3 py-1 rounded-full border-2 border-black">{ex.grade}</span>
+                      <span className="text-[10px] font-black uppercase bg-orange-100 text-orange-600 px-3 py-1 rounded-full border-2 border-black">{ex.stream}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => isLoggedIn ? setActiveExam(ex) : setActiveView('login')} className="px-12 py-5 bg-black text-white rounded-2xl border-4 border-black font-black uppercase text-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 shrink-0">Launch</button>
                 </div>
               ))}
+              {filteredExams.length === 0 && (
+                <div className="py-20 text-center space-y-6">
+                  <div className="text-8xl grayscale opacity-20">📝</div>
+                  <h3 className="text-4xl font-black uppercase italic text-gray-400">No Exams for your profile.</h3>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -460,31 +859,139 @@ const App: React.FC = () => {
         return <PerformancePortal results={userResults} exams={exams} currentUser={currentUser || undefined} courses={courses} onCertPaid={handleCertPaid} />;
       case 'leaderboard':
         return <Leaderboard students={users} />;
+      case 'profile':
+        return currentUser ? <StudentProfile user={currentUser} onUpdateUser={(updatedUser) => { setCurrentUser(updatedUser); setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u)); }} /> : null;
       case 'tutor':
         return <AITutor />;
+      case 'assignments':
+        return currentUser ? <AssignmentPortal currentUser={currentUser} assignments={assignments} submissions={submissions} /> : null;
+      case 'studyhall':
+        return currentUser ? <StudyHall currentUser={currentUser} lang={currentLang} /> : null;
       case 'locator':
         return <CampusLocator />;
       case 'about':
         return <AboutPortal />;
       case 'documentation':
         return <DevPortal />;
+      case 'report':
+        return <ProjectReportPortal />;
       default:
         return (
           <div className="space-y-24 animate-fadeIn">
             <section className="rounded-[4rem] p-12 md:p-32 text-white bg-gradient-to-br from-[#ef3340] to-black border-8 border-black shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden flex flex-col items-center text-center">
               <div className="relative z-10 max-w-6xl space-y-12">
-                <h1 className="text-6xl md:text-[12rem] font-black uppercase tracking-tighter leading-[0.8] italic">
-                  SOVEREIGN <br/> LEARNING
-                </h1>
+                <div className="space-y-4">
+                  {isLoggedIn && (
+                    <div className="bg-white/20 backdrop-blur-md px-8 py-3 rounded-full border-2 border-white/30 inline-block mb-8">
+                      <p className="text-sm font-black uppercase tracking-[0.3em]">Welcome back, {currentUser?.name}</p>
+                    </div>
+                  )}
+                  <h1 className="text-6xl md:text-[12rem] font-black uppercase tracking-tighter leading-[0.8] italic">
+                    SOVEREIGN <br/> LEARNING
+                  </h1>
+                </div>
                 <p className="text-xl md:text-3xl font-black uppercase tracking-widest italic opacity-90">Empowering Ethiopia's Digital Generation.</p>
                 {!isLoggedIn && (
                   <div className="flex flex-col sm:flex-row gap-8 justify-center pt-8">
-                    <button onClick={() => setActiveView('register')} className="bg-white text-black px-12 py-6 rounded-[2.5rem] border-8 border-black font-black uppercase text-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:scale-105 transition-all">START REGISTRY</button>
-                    <button onClick={() => setActiveView('login')} className="bg-black text-white px-12 py-6 rounded-[2.5rem] border-8 border-black font-black uppercase text-xl shadow-[8px_8px_0px_0px_rgba(255,255,255,0.2)] hover:scale-105 transition-all">ACCESS PORTAL</button>
+                    <button onClick={() => setActiveView('login')} className="bg-black text-white px-12 py-6 rounded-[2.5rem] border-8 border-black font-black uppercase text-xl shadow-[15px_15px_0px_0px_rgba(0,208,90,1)] hover:scale-105 transition-all">ACCESS PORTAL</button>
                   </div>
                 )}
               </div>
             </section>
+
+            {isLoggedIn && currentUser?.role === 'student' && (
+              <div className="max-w-6xl mx-auto space-y-12 animate-fadeIn">
+                <div className="flex items-center gap-6">
+                  <div className="w-20 h-20 bg-blue-600 border-8 border-black rounded-[2rem] flex items-center justify-center text-4xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">📋</div>
+                  <div>
+                    <h2 className="text-6xl font-black uppercase italic tracking-tighter leading-none">Identity Board.</h2>
+                    <p className="text-[10px] font-black uppercase text-gray-400 mt-2 tracking-widest">Official Registration Trace</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+                  <div className="bg-white border-8 border-black rounded-[4rem] p-12 shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] space-y-8">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gray-100 border-4 border-black rounded-xl flex items-center justify-center text-2xl">👤</div>
+                      <h3 className="text-2xl font-black uppercase italic">Sovereign Data</h3>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="p-4 bg-gray-50 border-4 border-black rounded-2xl">
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Full Legal Name</p>
+                        <p className="text-xl font-black italic">{currentUser.name}</p>
+                      </div>
+                      <div className="p-4 bg-gray-50 border-4 border-black rounded-2xl">
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">National ID (NID)</p>
+                        <p className="text-xl font-black italic">{currentUser.nid || 'NOT_ASSIGNED'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border-8 border-black rounded-[4rem] p-12 shadow-[20px_20px_0px_0px_rgba(59,130,246,1)] space-y-8">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-blue-100 border-4 border-black rounded-xl flex items-center justify-center text-2xl">🎓</div>
+                      <h3 className="text-2xl font-black uppercase italic">Academic Trace</h3>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="p-4 bg-blue-50 border-4 border-black rounded-2xl">
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Grade / Level</p>
+                        <p className="text-xl font-black italic">{currentUser.grade || 'UNMAPPED'}</p>
+                      </div>
+                      <div className="p-4 bg-blue-50 border-4 border-black rounded-2xl">
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Stream / Sector</p>
+                        <p className="text-xl font-black italic">{currentUser.stream || 'GENERAL'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border-8 border-black rounded-[4rem] p-12 shadow-[20px_20px_0px_0px_rgba(0,208,90,1)] space-y-8">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-green-100 border-4 border-black rounded-xl flex items-center justify-center text-2xl">⚡</div>
+                      <h3 className="text-2xl font-black uppercase italic">Registry Status</h3>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="p-4 bg-green-50 border-4 border-black rounded-2xl">
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Knowledge Points (KP)</p>
+                        <p className="text-3xl font-black italic text-green-600">{currentUser.points} KP</p>
+                      </div>
+                      <div className="p-4 bg-green-50 border-4 border-black rounded-2xl">
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Registry State</p>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                          <p className="text-xl font-black italic uppercase">{currentUser.status}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isLoggedIn && simulatedMessages.length > 0 && (
+              <div className="max-w-4xl mx-auto space-y-8">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-yellow-400 border-4 border-black rounded-xl flex items-center justify-center text-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">📩</div>
+                  <h3 className="text-4xl font-black uppercase italic tracking-tighter">National SMS Inbox</h3>
+                </div>
+                <div className="grid grid-cols-1 gap-6">
+                  {simulatedMessages.map(m => (
+                    <div key={m.id} className="bg-white p-8 rounded-[2.5rem] border-8 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] flex justify-between items-center group hover:bg-blue-50 transition-all">
+                      <div className="space-y-2">
+                        <p className="text-xl font-bold italic leading-relaxed">{m.text}</p>
+                        <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">{m.date} • National Gateway Dispatch</p>
+                      </div>
+                      <button 
+                        onClick={() => setSimulatedMessages(prev => prev.filter(msg => msg.id !== m.id))}
+                        className="w-12 h-12 flex items-center justify-center bg-gray-100 border-4 border-black rounded-xl hover:bg-red-100 transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-12">
               {SUMMER_STATS.map((s, i) => (
                 <div key={i} className="bg-white border-8 border-black rounded-[3rem] p-8 md:p-12 text-center shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center group hover:bg-gray-50 transition-colors">
@@ -511,8 +1018,11 @@ const App: React.FC = () => {
             setActiveExam(null); 
             setActiveView('performance');
             if (currentUser) {
+              const updatedUser = { ...currentUser, points: currentUser.points + res.score };
+              setCurrentUser(updatedUser);
+              setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
               await dbService.saveExamResult({ ...res, studentId: currentUser.id });
-              await dbService.syncUser({ ...currentUser, points: currentUser.points + res.score });
+              await dbService.syncUser(updatedUser);
             }
           }} 
           onCancel={() => setActiveExam(null)} 
@@ -532,25 +1042,42 @@ const App: React.FC = () => {
       )}
       {!activeExam && !viewingCourse && (
         <>
-          <Header onNavClick={setActiveView} activeView={activeView} isLoggedIn={isLoggedIn} userRole={currentUser?.role} onLogout={() => { setIsLoggedIn(false); setCurrentUser(null); setActiveView('home'); }} onLoginClick={() => setActiveView('login')} currentLang={currentLang} onLangChange={setCurrentLang} t={t} accessibilitySettings={{}} onAccessibilityChange={() => {}} />
+          <Header onNavClick={setActiveView} activeView={activeView} isLoggedIn={isLoggedIn} userRole={currentUser?.role} onLogout={async () => { await auth.signOut(); setIsLoggedIn(false); setCurrentUser(null); setActiveView('home'); }} onLoginClick={() => setActiveView('login')} currentLang={currentLang} onLangChange={setCurrentLang} t={t} accessibilitySettings={{}} onAccessibilityChange={() => {}} isOnline={isOnline} />
+          {dbError && (
+            <div className="bg-red-500 text-white p-4 text-center font-black uppercase text-xs animate-pulse">
+              ⚠️ {dbError} <button onClick={() => window.location.reload()} className="underline ml-4">Retry</button>
+            </div>
+          )}
           <main className="flex-grow w-full max-w-screen-2xl mx-auto px-4 py-16">{renderContent()}</main>
+          <FeedbackWidget />
           <footer className="bg-black text-white py-24 px-8 mt-20 text-center relative overflow-hidden">
              <div className="absolute top-0 left-0 w-full h-2 ethiopian-gradient"></div>
              <div className="flex flex-col items-center gap-8">
                <p className="text-[14px] font-black uppercase tracking-[0.6em] text-white/60">© 2026 <span className="liquid-spectrum-text">IFTU NATIONAL DIGITAL CENTER</span>.</p>
-               <a 
-                 href="https://github.com/jemalfano030/iftu-portal" 
-                 target="_blank" 
-                 rel="noopener noreferrer"
-                 className="flex items-center gap-3 px-6 py-3 bg-white/10 hover:bg-white/20 border-2 border-white/20 rounded-full transition-all group"
-               >
-                 <span className="text-white/40 group-hover:text-white transition-colors">View Source on GitHub</span>
-                 <div className="w-8 h-8 flex items-center justify-center bg-white rounded-lg">
-                   <svg viewBox="0 0 24 24" className="w-5 h-5 fill-black" xmlns="http://www.w3.org/2000/svg">
-                     <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
-                   </svg>
-                 </div>
-               </a>
+               <div className="flex flex-wrap justify-center gap-6">
+                 <a 
+                   href="https://github.com/jemalfano030/iftu-portal" 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="flex items-center gap-3 px-6 py-3 bg-white/10 hover:bg-white/20 border-2 border-white/20 rounded-full transition-all group"
+                 >
+                   <span className="text-white/40 group-hover:text-white transition-colors">View Source on GitHub</span>
+                   <div className="w-8 h-8 flex items-center justify-center bg-white rounded-lg">
+                     <svg viewBox="0 0 24 24" className="w-5 h-5 fill-black" xmlns="http://www.w3.org/2000/svg">
+                       <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+                     </svg>
+                   </div>
+                 </a>
+                 <a 
+                   href="https://ais-dev-adyv3zaxyzietvbae52va4-107893339879.europe-west2.run.app"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   className="flex items-center gap-3 px-6 py-3 bg-green-500/10 border-2 border-green-500/20 rounded-full hover:bg-green-500/20 transition-all group"
+                 >
+                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                   <span className="text-[10px] font-black uppercase tracking-widest text-green-500 group-hover:underline">Live on Cloud Run</span>
+                 </a>
+               </div>
              </div>
           </footer>
         </>

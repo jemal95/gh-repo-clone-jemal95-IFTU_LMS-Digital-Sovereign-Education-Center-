@@ -90,7 +90,16 @@ export const MOCK_EXAMS: Exam[] = [
 ];
 
 export const MOCK_NEWS = [
-  { id: 'n1', date: `Feb 22, ${CURRENT_YEAR}`, tag: 'Infrastructure', title: 'IFTU National Server Cluster Upgraded', summary: 'Improved latency for remote proctoring.', image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc51?auto=format&fit=crop&q=80&w=600', content: 'The upgrade ensures stable connections for students in all regions.' }
+  { id: 'n1', date: `Feb 22, ${CURRENT_YEAR}`, tag: 'Infrastructure', title: 'IFTU National Server Cluster Upgraded', summary: 'Improved latency for remote proctoring.', image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc51?auto=format&fit=crop&q=80&w=600', content: 'The upgrade ensures stable connections for students in all regions.' },
+  { 
+    id: 'n2', 
+    date: `March 1, ${CURRENT_YEAR}`, 
+    tag: 'Exams', 
+    title: `${CURRENT_YEAR} Ethiopian National Exam Registration Schedule`, 
+    summary: 'Official registration dates for regular and private candidates have been announced.', 
+    content: `The Ethiopian Educational Assessment and Examinations Service (EAES) has officially announced the registration schedule for the ${CURRENT_YEAR} National Examinations.\n\n• Regular Registration: Starts March 20, ${CURRENT_YEAR} and ends April 15, ${CURRENT_YEAR}.\n• Private Candidate Registration: Starts April 1, ${CURRENT_YEAR} and ends April 30, ${CURRENT_YEAR}.\n\nAll candidates must complete their registration through the official portal before the strict deadlines. Late registrations will not be accepted under any circumstances.`, 
+    image: 'https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d?auto=format&fit=crop&q=80&w=600' 
+  }
 ];
 
 export const SUMMER_STATS = [

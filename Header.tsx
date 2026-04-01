@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Language } from '../types';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   onNavClick: (view: string) => void;
@@ -14,10 +15,11 @@ interface HeaderProps {
   t: (key: string) => string;
   accessibilitySettings: any;
   onAccessibilityChange: (settings: any) => void;
+  isOnline: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
-  onNavClick, activeView, isLoggedIn, userRole, onLogout, onLoginClick, currentLang, onLangChange, t 
+  onNavClick, activeView, isLoggedIn, userRole, onLogout, onLoginClick, currentLang, onLangChange, t, isOnline 
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -28,10 +30,12 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const getNavItems = () => {
-    if (!isLoggedIn) return ['home', 'courses', 'news', 'about', 'locator', 'documentation'];
-    if (userRole === 'admin') return ['admin', 'courses', 'leaderboard', 'locator', 'documentation'];
-    if (userRole === 'teacher') return ['teacher', 'courses', 'exams', 'locator', 'documentation'];
-    return ['home', 'courses', 'exams', 'tutor', 'performance', 'leaderboard', 'locator', 'documentation'];
+    if (!isLoggedIn) return ['home', 'courses', 'news', 'about', 'locator', 'documentation', 'report'];
+    if (userRole === 'admin') return ['admin', 'courses', 'leaderboard', 'locator', 'documentation', 'report'];
+    if (userRole === 'teacher' || userRole === 'teaching_assistant') return ['teacher', 'courses', 'exams', 'locator', 'documentation', 'report'];
+    if (userRole === 'content_creator') return ['teacher', 'courses', 'news', 'documentation', 'report'];
+    if (userRole === 'guest_user') return ['home', 'courses', 'about', 'locator', 'documentation'];
+    return ['home', 'courses', 'exams', 'assignments', 'studyhall', 'tutor', 'performance', 'leaderboard', 'profile', 'locator', 'documentation', 'report'];
   };
 
   const navItems = getNavItems();
@@ -67,7 +71,7 @@ const Header: React.FC<HeaderProps> = ({
           {/* Desktop Central Navigation */}
           <nav className="hidden xl:flex items-center bg-gray-50 border-8 border-black rounded-[3rem] px-10 h-24 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
             <div className="flex items-center gap-6">
-              {['home', 'courses', 'news', 'about', 'documentation'].map((v) => (
+              {['home', 'courses', 'news', 'about', 'documentation', 'report'].map((v) => (
                 <button 
                   key={v} 
                   onClick={() => handleNav(v)} 
@@ -82,7 +86,9 @@ const Header: React.FC<HeaderProps> = ({
           {/* Right Section Actions */}
           <div className="flex items-center gap-4 relative" ref={dropdownRef}>
             {/* Language Selector */}
-            <div className="flex gap-1 bg-gray-100 p-1.5 rounded-xl border-4 border-black">
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full border-2 border-black ${isOnline ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} title={isOnline ? 'Online' : 'Offline'}></div>
+              <div className="flex gap-1 bg-gray-100 p-1.5 rounded-xl border-4 border-black">
               {(['en', 'am', 'om'] as Language[]).map(l => (
                 <button 
                   key={l} 
@@ -92,7 +98,9 @@ const Header: React.FC<HeaderProps> = ({
                   {l}
                 </button>
               ))}
+              </div>
             </div>
+            {isLoggedIn && <NotificationBell />}
 
             {/* Main Action Button (Login or Identity) */}
             {isLoggedIn ? (

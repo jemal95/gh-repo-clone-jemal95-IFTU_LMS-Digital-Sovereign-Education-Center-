@@ -1,295 +1,586 @@
 
-import { supabase, isSupabaseConfigured } from './supabaseClient';
-import { User, ExamResult, Course, Exam, News } from '../types';
+import { db, auth } from '../firebase';
+import { collection, getDocs, doc, setDoc, deleteDoc, query, where, updateDoc, onSnapshot, Unsubscribe, addDoc, orderBy, limit } from 'firebase/firestore';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { User, ExamResult, Course, Exam, News, Assignment, AssignmentSubmission, AppNotification } from '../types';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, isListener: boolean = false) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error(`Firestore ${isListener ? 'Listener' : 'Operation'} Error: `, JSON.stringify(errInfo, null, 2));
+  
+  if (isListener) {
+    // Don't throw in listeners to avoid crashing the app, but log it clearly
+    return;
+  }
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export const dbService = {
-  // AUTH: SIGN UP
-  async signUp(email: string, password: string, userData: Partial<User>) {
-    if (!isSupabaseConfigured || !supabase) {
-      console.warn("Supabase not configured, using local fallback");
-      return { user: { id: `usr-${Date.now()}`, ...userData }, error: null, session: { access_token: 'mock' } };
-    }
-    
+  // AUTH
+  async signIn(email: string, password?: string) {
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name: userData.name,
-            role: userData.role || 'student',
-            nid: userData.nid
-          }
-        }
-      });
-
-      if (error) throw error;
-
-      if (data.user) {
-        // Map camelCase to snake_case for database
-        const dbUser = {
-          id: data.user.id,
-          name: userData.name,
-          email: email,
-          role: userData.role || 'student',
-          nid: userData.nid,
-          gender: userData.gender,
-          dob: userData.dob,
-          level: userData.level,
-          grade: userData.grade,
-          stream: userData.stream,
-          school: userData.school,
-          phone_number: userData.phoneNumber,
-          address: userData.address,
-          salary: userData.salary,
-          points: userData.points || 0,
-          joined_date: new Date().toISOString(),
-          preferred_language: userData.preferredLanguage || 'en',
-          photo: userData.photo,
-          status: 'active'
-        };
-
-        const { error: syncError } = await supabase
-          .from('users')
-          .upsert(dbUser);
-        
-        if (syncError) {
-          console.error("Error syncing user profile to database:", syncError);
-        }
-      }
-      
-      return { user: data.user, session: data.session, error: null };
-    } catch (err: any) {
-      console.error("Registration Error:", err.message);
-      return { user: null, session: null, error: err };
+      const userCredential = await signInWithEmailAndPassword(auth, email, password || 'demo');
+      return { user: { id: userCredential.user.uid } };
+    } catch (error) {
+      return { error };
     }
   },
 
-  // AUTH: SIGN IN
-  async signIn(email: string, password: string) {
-    if (!isSupabaseConfigured || !supabase) {
-      // Fallback for local demo handled in App.tsx
-      return { user: null, error: new Error("Supabase not configured") };
+  async signInWithGoogle() {
+    try {
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      return { user: { id: userCredential.user.uid, email: userCredential.user.email, name: userCredential.user.displayName, photo: userCredential.user.photoURL } };
+    } catch (error) {
+      return { error };
     }
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    return { user: data.user, error };
   },
 
-  // FETCH USER PROFILE
-  async fetchUserProfile(userId: string) {
-    if (!isSupabaseConfigured || !supabase) return null;
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    return error ? null : data;
+  async signUp(email: string, password: string, user: User) {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const userRef = doc(db, 'users', userCredential.user.uid);
+    await setDoc(userRef, { ...user, id: userCredential.user.uid });
   },
 
-  // SYNC USER DATA
-  async syncUser(user: User) {
-    if (!isSupabaseConfigured || !supabase) return null;
-    const { data, error } = await supabase
-      .from('users')
-      .upsert({ 
-        id: user.id, 
-        name: user.name, 
-        email: user.email, 
-        points: user.points,
-        role: user.role,
-        grade: user.grade,
-        stream: user.stream,
-        level: user.level,
-        nid: user.nid,
-        gender: user.gender,
-        dob: user.dob,
-        school: user.school,
-        phone_number: user.phoneNumber,
-        address: user.address,
-        salary: user.salary,
-        photo: user.photo,
-        preferred_language: user.preferredLanguage,
-        completed_lessons: user.completedLessons,
-        completed_exams: user.completedExams,
-        completed_courses: user.completedCourses,
-        certificates_paid: user.certificatesPaid,
-        last_sync: new Date().toISOString()
-      });
-    if (error) console.warn("Supabase Sync Warning:", error.message);
-    return data;
+  // REAL-TIME LISTENERS
+  subscribeToExams(callback: (exams: Exam[]) => void, onError?: (error: any) => void): Unsubscribe {
+    const path = 'exams';
+    const q = collection(db, path);
+    return onSnapshot(q, (snapshot) => {
+      const exams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Exam));
+      callback(exams);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path, true);
+      if (onError) onError(error);
+    });
   },
 
-  // DELETE USER
-  async deleteUser(id: string) {
-    if (!isSupabaseConfigured || !supabase) return null;
-    const { error } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', id);
-    if (error) console.warn("User Delete Error:", error.message);
+  subscribeToCourses(callback: (courses: Course[]) => void, onError?: (error: any) => void): Unsubscribe {
+    const path = 'courses';
+    const q = collection(db, path);
+    return onSnapshot(q, (snapshot) => {
+      const courses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
+      callback(courses);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path, true);
+      if (onError) onError(error);
+    });
   },
 
-  // FETCH USERS (LEADERBOARD)
-  async fetchTopStudents() {
-    if (!isSupabaseConfigured || !supabase) return [];
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .order('points', { ascending: false })
-      .limit(10);
-    return error ? [] : data;
+  subscribeToNews(callback: (news: News[]) => void, onError?: (error: any) => void): Unsubscribe {
+    const path = 'news';
+    const q = collection(db, path);
+    return onSnapshot(q, (snapshot) => {
+      const news = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as News));
+      callback(news);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path, true);
+      if (onError) onError(error);
+    });
   },
 
-  // SYNC EXAM DATA
-  async syncExam(exam: Exam) {
-    if (!isSupabaseConfigured || !supabase) return null;
-    const { data, error } = await supabase
-      .from('exam')
-      .upsert({
-        id: exam.id,
-        title: exam.title,
-        course_code: exam.courseCode,
-        grade: exam.grade,
-        stream: exam.stream,
-        academic_year: exam.academicYear,
-        duration_minutes: exam.durationMinutes,
-        total_points: exam.totalPoints,
-        status: exam.status,
-        type: exam.type,
-        subject: exam.subject,
-        categories: exam.categories,
-        questions: exam.questions,
-        semester: exam.semester
-      });
-    if (error) console.warn("Exam Sync Error:", error.message);
-    return data;
+  subscribeToUsers(callback: (users: User[]) => void, onError?: (error: any) => void): Unsubscribe {
+    const path = 'users';
+    const q = collection(db, path);
+    return onSnapshot(q, (snapshot) => {
+      const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+      callback(users);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path, true);
+      if (onError) onError(error);
+    });
   },
 
-  // FETCH EXAMS
-  async fetchExams() {
-    if (!isSupabaseConfigured || !supabase) return [];
-    const { data, error } = await supabase
-      .from('exam')
-      .select('*')
-      .eq('status', 'published');
-    return error ? [] : data;
+  subscribeToAssignments(callback: (assignments: Assignment[]) => void, onError?: (error: any) => void): Unsubscribe {
+    const path = 'assignments';
+    const q = collection(db, path);
+    return onSnapshot(q, (snapshot) => {
+      const assignments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Assignment));
+      callback(assignments);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path, true);
+      if (onError) onError(error);
+    });
+  },
+
+  subscribeToSubmissions(callback: (submissions: AssignmentSubmission[]) => void, onError?: (error: any) => void): Unsubscribe {
+    const path = 'submissions';
+    const q = collection(db, path);
+    return onSnapshot(q, (snapshot) => {
+      const submissions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AssignmentSubmission));
+      callback(submissions);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path, true);
+      if (onError) onError(error);
+    });
+  },
+
+  subscribeToExamResults(callback: (results: ExamResult[]) => void, onError?: (error: any) => void): Unsubscribe {
+    const path = 'exam_results';
+    const q = collection(db, path);
+    return onSnapshot(q, (snapshot) => {
+      const results = snapshot.docs.map(doc => ({ ...doc.data() } as ExamResult));
+      callback(results);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path, true);
+      if (onError) onError(error);
+    });
+  },
+
+  // FETCH NOTIFICATIONS
+  async fetchNotifications(userId: string): Promise<AppNotification[]> {
+    const path = 'notifications';
+    try {
+      const notifsCol = collection(db, path);
+      const q = query(notifsCol, where('userId', '==', userId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppNotification));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
+  // CREATE NOTIFICATION
+  async createNotification(notification: Omit<AppNotification, 'id'>) {
+    const path = 'notifications';
+    try {
+      await addDoc(collection(db, path), notification);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  // MARK NOTIFICATION AS READ
+  async markNotificationRead(notificationId: string) {
+    if (!auth.currentUser) return;
+    const path = 'notifications';
+    try {
+      const notifRef = doc(db, path, notificationId);
+      await updateDoc(notifRef, { isRead: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  },
+
+  // FETCH ALL USERS (Admin)
+  async fetchAllUsers(): Promise<User[]> {
+    const path = 'users';
+    try {
+      const usersCol = collection(db, path);
+      const snapshot = await getDocs(usersCol);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
   // FETCH COURSES
-  async fetchCourses() {
-    if (!isSupabaseConfigured || !supabase) return [];
-    const { data, error } = await supabase
-      .from('courses')
-      .select('*');
-    return error ? [] : data;
+  async fetchCourses(): Promise<Course[]> {
+    const path = 'courses';
+    try {
+      const coursesCol = collection(db, path);
+      const snapshot = await getDocs(coursesCol);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
+  // FETCH EXAMS
+  async fetchExams(): Promise<Exam[]> {
+    const path = 'exams';
+    try {
+      const examsCol = collection(db, path);
+      const snapshot = await getDocs(examsCol);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Exam));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
   // FETCH NEWS
-  async fetchNews() {
-    if (!isSupabaseConfigured || !supabase) return [];
-    const { data, error } = await supabase
-      .from('news')
-      .select('*')
-      .order('date', { ascending: false });
-    return error ? [] : data;
+  async fetchNews(): Promise<News[]> {
+    const path = 'news';
+    try {
+      const newsCol = collection(db, path);
+      const snapshot = await getDocs(newsCol);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as News));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
-  // SYNC EXAM RESULTS
-  async saveExamResult(result: ExamResult) {
-    if (!isSupabaseConfigured || !supabase) return null;
-    const { data, error } = await supabase
-      .from('exam_results')
-      .insert({
-        exam_id: result.examId,
-        student_id: result.studentId,
-        score: result.score,
-        total_points: result.totalPoints,
-        category_breakdown: result.categoryBreakdown,
-        time_spent: result.timeSpentSeconds,
-        completed_at: result.completedAt,
-        answers: result.answers
-      });
-    if (error) console.warn("Result Persistence Error:", error.message);
-    return data;
+  // FETCH ASSIGNMENTS
+  async fetchAssignments(): Promise<Assignment[]> {
+    const path = 'assignments';
+    try {
+      const assignmentsCol = collection(db, path);
+      const snapshot = await getDocs(assignmentsCol);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Assignment));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
-  // SYNC COURSE DATA
-  async syncCourse(course: Course) {
-    if (!isSupabaseConfigured || !supabase) return null;
-    const { data, error } = await supabase
-      .from('courses')
-      .upsert({
-        id: course.id,
-        title: course.title,
-        code: course.code,
-        grade: course.grade,
-        stream: course.stream,
-        level: course.level,
-        thumbnail: course.thumbnail,
-        description: course.description,
-        lessons: course.lessons,
-        instructor: course.instructor,
-        subject: course.subject
-      });
-    if (error) console.warn("Course Sync Error:", error.message);
-    return data;
+  // FETCH SUBMISSIONS
+  async fetchSubmissions(assignmentId: string): Promise<AssignmentSubmission[]> {
+    const path = 'submissions';
+    try {
+      const submissionsCol = collection(db, path);
+      const q = query(submissionsCol, where('assignmentId', '==', assignmentId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AssignmentSubmission));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
-  // DELETE COURSE
-  async deleteCourse(id: string) {
-    if (!isSupabaseConfigured || !supabase) return null;
-    const { error } = await supabase
-      .from('courses')
-      .delete()
-      .eq('id', id);
-    if (error) console.warn("Course Delete Error:", error.message);
+  // FETCH USER SUBMISSION
+  async fetchUserSubmission(assignmentId: string, studentId: string): Promise<AssignmentSubmission | null> {
+    const path = 'submissions';
+    try {
+      const submissionsCol = collection(db, path);
+      const q = query(submissionsCol, where('assignmentId', '==', assignmentId), where('studentId', '==', studentId));
+      const snapshot = await getDocs(q);
+      return snapshot.empty ? null : ({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as AssignmentSubmission);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, path);
+      return null;
+    }
   },
 
-  // SYNC NEWS DATA
-  async syncNews(news: News) {
-    if (!isSupabaseConfigured || !supabase) return null;
-    const { data, error } = await supabase
-      .from('news')
-      .upsert({
-        id: news.id,
-        title: news.title,
-        summary: news.summary,
-        content: news.content,
-        tag: news.tag,
-        image: news.image,
-        date: news.date
-      });
-    if (error) console.warn("News Sync Error:", error.message);
-    return data;
+  // FETCH ALL SUBMISSIONS (Admin)
+  async fetchAllSubmissions(): Promise<AssignmentSubmission[]> {
+    const path = 'submissions';
+    try {
+      const submissionsCol = collection(db, path);
+      const snapshot = await getDocs(submissionsCol);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AssignmentSubmission));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
-  // DELETE NEWS
-  async deleteNews(id: string) {
-    if (!isSupabaseConfigured || !supabase) return null;
-    const { error } = await supabase
-      .from('news')
-      .delete()
-      .eq('id', id);
-    if (error) console.warn("News Delete Error:", error.message);
+  // SYNC SUBMISSION
+  async syncSubmission(submission: AssignmentSubmission) {
+    if (!auth.currentUser) return;
+    const path = 'submissions';
+    try {
+      const submissionRef = doc(db, path, submission.id);
+      await setDoc(submissionRef, submission, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
   },
 
-  // FETCH PERFORMANCE HISTORY
-  async fetchResults(userId: string) {
-    if (!isSupabaseConfigured || !supabase) return [];
-    const { data, error } = await supabase
-      .from('exam_results')
-      .select('*')
-      .eq('student_id', userId);
-    return error ? [] : data;
+  // DELETE SUBMISSION
+  async deleteSubmission(id: string) {
+    if (!auth.currentUser) return;
+    const path = 'submissions';
+    try {
+      const submissionRef = doc(db, path, id);
+      await deleteDoc(submissionRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  // FETCH RESULTS
+  async fetchResults(studentId: string): Promise<ExamResult[]> {
+    const path = 'exam_results';
+    try {
+      const resultsCol = collection(db, path);
+      const q = query(resultsCol, where('studentId', '==', studentId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ ...doc.data() } as ExamResult));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
   // FETCH ALL RESULTS (Admin)
-  async fetchAllResults() {
-    if (!isSupabaseConfigured || !supabase) return [];
-    const { data, error } = await supabase
-      .from('exam_results')
-      .select('*')
-      .order('completed_at', { ascending: false });
-    return error ? [] : data;
-  }
+  async fetchAllResults(): Promise<ExamResult[]> {
+    const path = 'exam_results';
+    try {
+      const resultsCol = collection(db, path);
+      const snapshot = await getDocs(resultsCol);
+      return snapshot.docs.map(doc => ({ ...doc.data() } as ExamResult));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
+  // SYNC ASSIGNMENT DATA
+  async syncAssignment(assignment: Assignment) {
+    if (!auth.currentUser) return;
+    const path = 'assignments';
+    try {
+      const assignmentRef = doc(db, path, assignment.id);
+      await setDoc(assignmentRef, assignment, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  // DELETE ASSIGNMENT
+  async deleteAssignment(id: string) {
+    if (!auth.currentUser) return;
+    const path = 'assignments';
+    try {
+      const assignmentRef = doc(db, path, id);
+      await deleteDoc(assignmentRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  // RESTORED FUNCTIONS
+  async fetchTopStudents(): Promise<User[]> {
+    const path = 'users';
+    try {
+      const usersCol = collection(db, path);
+      const snapshot = await getDocs(usersCol);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)).sort((a, b) => b.points - a.points).slice(0, 5);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
+  async fetchUserProfile(id: string): Promise<User | null> {
+    const path = 'users';
+    try {
+      const { getDoc } = await import('firebase/firestore');
+      const userRef = doc(db, path, id);
+      const snapshot = await getDoc(userRef);
+      return snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as User) : null;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, path);
+      return null;
+    }
+  },
+
+  async syncUser(user: User) {
+    if (!auth.currentUser) return;
+    const path = 'users';
+    try {
+      const userRef = doc(db, path, user.id);
+      await setDoc(userRef, user, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  async deleteUser(id: string) {
+    if (!auth.currentUser) return;
+    const path = 'users';
+    try {
+      const userRef = doc(db, path, id);
+      await deleteDoc(userRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  async syncCourse(course: Course) {
+    if (!auth.currentUser) return;
+    const path = 'courses';
+    try {
+      const courseRef = doc(db, path, course.id);
+      await setDoc(courseRef, course, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  async deleteCourse(id: string) {
+    if (!auth.currentUser) return;
+    const path = 'courses';
+    try {
+      const courseRef = doc(db, path, id);
+      await deleteDoc(courseRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  async syncNews(news: News) {
+    if (!auth.currentUser) return;
+    const path = 'news';
+    try {
+      const newsRef = doc(db, path, news.id);
+      await setDoc(newsRef, news, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  async deleteNews(id: string) {
+    if (!auth.currentUser) return;
+    const path = 'news';
+    try {
+      const newsRef = doc(db, path, id);
+      await deleteDoc(newsRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  async syncExam(exam: Exam) {
+    if (!auth.currentUser) return;
+    const path = 'exams';
+    try {
+      const examRef = doc(db, path, exam.id);
+      await setDoc(examRef, exam, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  async deleteExam(id: string) {
+    if (!auth.currentUser) return;
+    const path = 'exams';
+    try {
+      const examRef = doc(db, path, id);
+      await deleteDoc(examRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  async saveExamResult(result: ExamResult) {
+    if (!auth.currentUser) return;
+    const path = 'exam_results';
+    try {
+      const resultRef = doc(db, path, `${result.examId}_${result.studentId}`);
+      await setDoc(resultRef, result, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  async submitFeedback(feedback: any) {
+    if (!auth.currentUser) return;
+    const path = 'feedback';
+    try {
+      const feedbackRef = doc(db, path, `${Date.now()}`);
+      await setDoc(feedbackRef, feedback);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  // Study Hall (Chat & Notes)
+  subscribeToChat(hallId: string, callback: (messages: any[]) => void) {
+    const path = `study_halls/${hallId}/messages`;
+    const q = query(collection(db, path), orderBy('timestamp', 'asc'), limit(100));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, path));
+  },
+
+  async sendChatMessage(hallId: string, message: any) {
+    const path = `study_halls/${hallId}/messages`;
+    try {
+      await addDoc(collection(db, path), message);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  subscribeToNotes(hallId: string, callback: (notes: any[]) => void) {
+    const path = `study_halls/${hallId}/notes`;
+    const q = query(collection(db, path), orderBy('lastModifiedAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, path));
+  },
+
+  async createNote(hallId: string, note: any) {
+    const path = `study_halls/${hallId}/notes`;
+    try {
+      await addDoc(collection(db, path), note);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  async updateNote(hallId: string, noteId: string, updates: any) {
+    const path = `study_halls/${hallId}/notes`;
+    try {
+      await updateDoc(doc(db, path, noteId), updates);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  },
+
+  async deleteNote(hallId: string, noteId: string) {
+    const path = `study_halls/${hallId}/notes`;
+    try {
+      await deleteDoc(doc(db, path, noteId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  async getUsers(): Promise<User[]> {
+    const path = 'users';
+    try {
+      const snapshot = await getDocs(collection(db, path));
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
+  subscribeToNotifications(userId: string, callback: (notifications: AppNotification[]) => void) {
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+    return onSnapshot(q, (snapshot) => {
+      const notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppNotification));
+      callback(notifications);
+    }, (error) => {
+      console.error("Notification subscription error:", error);
+    });
+  },
 };

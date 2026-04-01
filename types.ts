@@ -21,9 +21,10 @@ export enum Stream {
   SOCIAL_SCIENCE = 'Social Science'
 }
 
-export type ExamType = 'mid' | 'final' | 'mock-eaes';
+export type ExamType = 'mid' | 'final' | 'mock-eaes' | 'national-eaes' | 'tvet-exit';
 export type Language = 'en' | 'am' | 'om';
-export type QuestionType = 'multiple-choice' | 'true-false' | 'fill-in-the-blank';
+export type QuestionType = 'multiple-choice' | 'true-false' | 'fill-in-the-blank' | 'short-answer';
+export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 
 export interface Lesson {
   id: string;
@@ -38,6 +39,14 @@ export interface Lesson {
   questions?: Question[];
 }
 
+export interface CourseMaterial {
+  id: string;
+  title: string;
+  type: 'document' | 'video' | 'link' | 'other';
+  url: string;
+  addedAt: string;
+}
+
 export interface Course {
   id: string;
   title: string;
@@ -47,6 +56,9 @@ export interface Course {
   level: EducationLevel;
   thumbnail: string;
   description: string;
+  syllabus?: string; // Markdown or URL
+  learningObjectives?: string[];
+  materials?: CourseMaterial[];
   lessons: Lesson[];
   instructor: string;
   instructorId?: string;
@@ -65,6 +77,7 @@ export interface Question {
   correctAnswer: number | string;
   points: number;
   category: string;
+  tags?: string[];
 }
 
 export interface Exam {
@@ -82,6 +95,7 @@ export interface Exam {
   type: ExamType;
   semester: 1 | 2;
   subject: string;
+  difficulty?: Difficulty;
 }
 
 export interface News {
@@ -104,7 +118,7 @@ export interface Badge {
 export interface User {
   id: string;
   name: string;
-  role: 'student' | 'teacher' | 'admin';
+  role: 'student' | 'teacher' | 'admin' | 'content_creator' | 'teaching_assistant' | 'guest_user';
   grade?: Grade;
   stream?: Stream;
   level?: EducationLevel;
@@ -113,6 +127,8 @@ export interface User {
   email: string;
   joinedDate: string;
   nid?: string; // National Identity Number
+  studentIdNumber?: string; // Student ID Number
+  academicRecordsUrl?: string; // URL for uploaded academic records
   gender?: 'Male' | 'Female' | 'Other';
   dob?: string;
   salary?: number; // Base Salary for Teachers or Stipend for Students
@@ -137,6 +153,41 @@ export interface ExamResult {
   totalPoints: number;
   completedAt: string;
   timeSpentSeconds: number;
-  answers: Record<string, number>;
+  answers: Record<string, number | string>;
   categoryBreakdown: Record<string, { correct: number; total: number }>;
+}
+
+export interface Assignment {
+  id: string;
+  title: string;
+  description: string;
+  courseCode: string;
+  dueDate: string;
+  points: number;
+  rubricUrl?: string;
+  status: 'draft' | 'published' | 'closed';
+}
+
+export interface AssignmentSubmission {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  studentName: string;
+  submittedAt: string;
+  fileUrl: string;
+  status: 'submitted' | 'graded' | 'returned';
+  gradedFileUrl?: string;
+  grade?: number;
+  feedback?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string; // The ID of the student or teacher who receives the notification
+  title: string;
+  message: string;
+  type: 'assignment' | 'submission' | 'grade';
+  isRead: boolean;
+  createdAt: string;
+  link?: string; // Optional link to the assignment or submission
 }
