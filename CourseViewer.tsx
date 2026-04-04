@@ -709,7 +709,11 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
         />
       )}
     </div>
-  );
+  )
 };
 
 export default CourseViewer;
+
+
+
+
