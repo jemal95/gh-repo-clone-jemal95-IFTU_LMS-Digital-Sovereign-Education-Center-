@@ -21,7 +21,7 @@ export enum Stream {
   SOCIAL_SCIENCE = 'Social Science'
 }
 
-export type ExamType = 'mid' | 'final' | 'mock-eaes' | 'national-eaes' | 'tvet-exit';
+export type ExamType = 'mid' | 'final' | 'mock-eaes' | 'national-eaes' | 'tvet-exit' | 'National';
 export type Language = 'en' | 'am' | 'om';
 export type QuestionType = 'multiple-choice' | 'true-false' | 'fill-in-the-blank' | 'short-answer';
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
@@ -32,9 +32,11 @@ export interface Lesson {
   duration: string;
   content: string;
   type: 'video' | 'reading' | 'quiz'; 
-  contentType: 'video' | 'reading' | 'quiz' | 'assignment';
+  contentType: 'video' | 'reading' | 'quiz' | 'assignment' | 'document';
   videoUrl?: string;
   pdfUrl?: string;
+  fileUrl?: string; // Generic URL for PDF, Word, PPT
+  fileName?: string;
   isCompleted?: boolean;
   questions?: Question[];
 }
@@ -66,6 +68,9 @@ export interface Course {
   instructorPhoto?: string;
   subject: string;
   enrolledStudents?: number;
+  enrolledCount?: number; // Alias for enrolledStudents
+  rating?: number;
+  points?: number;
   prerequisites?: string[];
 }
 
@@ -96,6 +101,8 @@ export interface Exam {
   semester: 1 | 2;
   subject: string;
   difficulty?: Difficulty;
+  description?: string;
+  keyConcepts?: { term: string; meaning: string }[];
 }
 
 export interface News {
@@ -133,6 +140,7 @@ export interface User {
   dob?: string;
   salary?: number; // Base Salary for Teachers or Stipend for Students
   photo?: string;
+  age?: number;
   department?: string; // Teachers only
   subjects?: string[]; // Teachers only
   phoneNumber?: string;
@@ -166,6 +174,7 @@ export interface Assignment {
   points: number;
   rubricUrl?: string;
   status: 'draft' | 'published' | 'closed';
+  progressStatus?: 'Not Started' | 'In Progress' | 'Completed' | 'Needs Review';
 }
 
 export interface AssignmentSubmission {

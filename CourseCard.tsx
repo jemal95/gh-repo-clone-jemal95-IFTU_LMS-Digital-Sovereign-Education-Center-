@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Course, Stream } from '../types';
+import { Course, Stream, Language } from '../types';
 import { NATIONAL_CENTER_INFO } from '../constants';
 
 interface CourseCardProps {
@@ -8,7 +8,9 @@ interface CourseCardProps {
   onClick: (course: Course) => void;
   completedLessonIds?: string[];
   completedCourseIds?: string[];
-  userRole?: 'student' | 'teacher' | 'admin';
+  userRole?: 'student' | 'teacher' | 'admin' | 'content_creator' | 'teaching_assistant' | 'guest_user';
+  language?: Language;
+  isEnrolled?: boolean;
 }
 
 const CourseCard: React.FC<CourseCardProps> = ({ 
@@ -16,7 +18,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
   onClick, 
   completedLessonIds = [], 
   completedCourseIds = [],
-  userRole
+  userRole,
+  language = 'en',
+  isEnrolled = false
 }) => {
   const totalLessons = course.lessons.length || 0;
   const completedInCourse = course.lessons.filter(l => completedLessonIds.includes(l.id)).length;

@@ -18,36 +18,78 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import * as geminiService from '../services/geminiService';
+import { getEthiopianDateString } from '../lib/dateUtils';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+import { storage } from '../firebase';
 
 const AssignmentModal = ({ isOpen, onClose, onSave, assignment }: { isOpen: boolean, onClose: () => void, onSave: (assignment: Assignment, file: File | null) => void, assignment: Assignment | null }) => {
-  const [formData, setFormData] = useState<Assignment>(assignment || { id: '', title: '', description: '', dueDate: '', points: 0, courseCode: '', rubricUrl: '', status: 'draft' });
+  const [formData, setFormData] = useState<Assignment>(assignment || { id: '', title: '', description: '', dueDate: '', points: 0, courseCode: '', rubricUrl: '', status: 'draft', progressStatus: 'Not Started' });
   const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (assignment) setFormData(assignment);
-    else setFormData({ id: '', title: '', description: '', dueDate: '', points: 0, courseCode: '', rubricUrl: '', status: 'draft' });
+    else setFormData({ id: '', title: '', description: '', dueDate: '', points: 0, courseCode: '', rubricUrl: '', status: 'draft', progressStatus: 'Not Started' });
     setFile(null);
   }, [assignment, isOpen]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white p-8 rounded-3xl border-8 border-black w-1/2">
-        <h2 className="text-3xl font-black uppercase italic mb-6">{assignment ? 'Edit Assignment' : 'New Assignment'}</h2>
-        <input type="text" placeholder="Title" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg mb-4" />
-        <textarea placeholder="Description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg mb-4" />
-        <input type="date" value={formData.dueDate} onChange={e => setFormData({...formData, dueDate: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg mb-4" />
-        <input type="number" placeholder="Points" value={formData.points} onChange={e => setFormData({...formData, points: parseInt(e.target.value)})} className="w-full p-4 border-4 border-black rounded-lg mb-4" />
-        <input type="text" placeholder="Course Code" value={formData.courseCode} onChange={e => setFormData({...formData, courseCode: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg mb-4" />
-        <input type="text" placeholder="Rubric URL" value={formData.rubricUrl || ''} onChange={e => setFormData({...formData, rubricUrl: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg mb-4" />
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[8000] p-4 md:p-8 overflow-y-auto">
+      <div className="bg-white p-8 md:p-12 rounded-[3rem] border-8 border-black w-full max-w-2xl my-auto shadow-[30px_30px_0px_0px_rgba(0,0,0,1)] relative">
+        <button onClick={onClose} className="absolute top-6 right-6 text-3xl font-black hover:text-rose-600 transition-colors">✕</button>
+        <h2 className="text-3xl font-black uppercase italic mb-6 border-b-4 border-black pb-4">{assignment ? 'Edit Assignment' : 'New Assignment'}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="md:col-span-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Title</label>
+            <input type="text" placeholder="Title" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg" />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Description</label>
+            <textarea placeholder="Description" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg h-32" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Due Date (Gregorian)</label>
+            <input type="date" value={formData.dueDate || ''} onChange={e => setFormData({...formData, dueDate: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg" />
+            {formData.dueDate && (
+              <p className="text-[10px] font-black text-blue-600 mt-1 uppercase tracking-widest">
+                Ethiopian: {getEthiopianDateString(formData.dueDate)}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Points</label>
+            <input type="number" placeholder="Points" value={formData.points || 0} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 0})} className="w-full p-4 border-4 border-black rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Course Code</label>
+            <input type="text" placeholder="Course Code" value={formData.courseCode || ''} onChange={e => setFormData({...formData, courseCode: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Progress Status</label>
+            <select 
+              value={formData.progressStatus || 'Not Started'} 
+              onChange={e => setFormData({...formData, progressStatus: e.target.value as any})} 
+              className="w-full p-4 border-4 border-black rounded-lg font-bold"
+            >
+              <option value="Not Started">Not Started</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Completed">Completed</option>
+              <option value="Needs Review">Needs Review</option>
+            </select>
+          </div>
+        </div>
         <div className="mb-4">
-          <label className="block font-black uppercase mb-2">Or Upload Rubric File:</label>
+          <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Rubric URL</label>
+          <input type="text" placeholder="Rubric URL" value={formData.rubricUrl || ''} onChange={e => setFormData({...formData, rubricUrl: e.target.value})} className="w-full p-4 border-4 border-black rounded-lg" />
+        </div>
+        <div className="mb-6">
+          <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Or Upload Rubric File:</label>
           <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="w-full p-4 border-4 border-black rounded-lg" />
         </div>
         <div className="flex justify-end gap-4">
-          <button onClick={onClose} className="bg-gray-200 px-6 py-3 rounded-lg font-black uppercase">Cancel</button>
-          <button onClick={() => onSave({...formData, id: formData.id || Date.now().toString()}, file)} className="bg-blue-600 text-white px-6 py-3 rounded-lg font-black uppercase">Save</button>
+          <button onClick={onClose} className="bg-gray-200 px-8 py-4 rounded-xl border-4 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all">Cancel</button>
+          <button onClick={() => onSave({...formData, id: formData.id || Date.now().toString()}, file)} className="bg-blue-600 text-white px-8 py-4 rounded-xl border-4 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all">Save Assignment</button>
         </div>
       </div>
     </div>
@@ -61,11 +103,11 @@ const StudentProgressModal = ({ isOpen, onClose, user, courses, examResults }: {
   const completedCoursesList = courses.filter(c => user.completedCourses?.includes(c.id));
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[8000] p-4">
-      <div className="bg-white p-8 rounded-[3rem] border-8 border-black w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-[20px_20px_0px_0px_rgba(0,0,0,1)]">
-        <div className="flex justify-between items-center mb-8 border-b-4 border-black pb-4">
-          <h2 className="text-4xl font-black uppercase italic text-blue-900">Student Progress: {user.name}</h2>
-          <button onClick={onClose} className="text-4xl font-black hover:text-rose-600 transition-colors">✕</button>
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[8000] p-4 md:p-8 overflow-y-auto">
+      <div className="bg-white p-8 md:p-16 rounded-[4rem] border-[10px] border-black w-full max-w-5xl my-auto shadow-[40px_40px_0px_0px_rgba(59,130,246,1)] relative">
+        <div className="flex justify-between items-center mb-8 border-b-8 border-black pb-6">
+          <h2 className="text-4xl md:text-6xl font-black uppercase italic text-blue-900 tracking-tighter">Student Progress: {user.name}</h2>
+          <button onClick={onClose} className="text-5xl font-black hover:text-rose-600 transition-colors">✕</button>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -130,7 +172,7 @@ const StudentProgressModal = ({ isOpen, onClose, user, courses, examResults }: {
 };
 
 const GradingModal = ({ isOpen, onClose, onSave, submission }: { isOpen: boolean, onClose: () => void, onSave: (submission: AssignmentSubmission, file: File | null) => void, submission: AssignmentSubmission | null }) => {
-  const [formData, setFormData] = useState<AssignmentSubmission>(submission || { id: '', assignmentId: '', studentId: '', studentName: '', submittedAt: '', fileUrl: '', grade: 0, feedback: '' });
+  const [formData, setFormData] = useState<AssignmentSubmission>(submission || { id: '', assignmentId: '', studentId: '', studentName: '', submittedAt: '', fileUrl: '', grade: 0, feedback: '', status: 'submitted' });
   const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
@@ -141,9 +183,10 @@ const GradingModal = ({ isOpen, onClose, onSave, submission }: { isOpen: boolean
   if (!isOpen || !submission) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[8000] p-4">
-      <div className="bg-white p-8 rounded-[3rem] border-8 border-black w-full max-w-2xl shadow-[20px_20px_0px_0px_rgba(0,0,0,1)]">
-        <h2 className="text-3xl font-black uppercase italic mb-6 border-b-4 border-black pb-4">Grade Submission: {submission.studentName}</h2>
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[8000] p-4 md:p-8 overflow-y-auto">
+      <div className="bg-white p-8 md:p-16 rounded-[4rem] border-[10px] border-black w-full max-w-3xl my-auto shadow-[40px_40px_0px_0px_rgba(0,0,0,1)] relative">
+        <button onClick={onClose} className="absolute top-8 right-8 text-4xl font-black hover:text-rose-600 transition-colors">✕</button>
+        <h2 className="text-4xl md:text-5xl font-black uppercase italic mb-8 border-b-8 border-black pb-6">Grade Submission: {submission.studentName}</h2>
         
         <div className="mb-6">
           <p className="text-xs font-black uppercase text-gray-400 mb-1">Submitted File</p>
@@ -156,7 +199,7 @@ const GradingModal = ({ isOpen, onClose, onSave, submission }: { isOpen: boolean
             <input 
               type="number" 
               value={formData.grade || 0} 
-              onChange={e => setFormData({...formData, grade: parseInt(e.target.value)})} 
+              onChange={e => setFormData({...formData, grade: parseInt(e.target.value) || 0})} 
               className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50" 
             />
           </div>
@@ -269,7 +312,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSendSMS,
   onNavClick
 }) => {
-  const [activeTab, setActiveTab] = React.useState<'identities' | 'curriculum' | 'bulletins' | 'analytics' | 'results' | 'exams' | 'assignments' | 'submissions' | 'videos'>('analytics');
+  const [activeTab, setActiveTab] = React.useState<'command_center' | 'identities' | 'courses' | 'bulletins' | 'analytics' | 'results' | 'exams' | 'assignments' | 'submissions' | 'videos'>('command_center');
   const [sovereignInsights, setSovereignInsights] = React.useState<{title: string, insight: string, impact: string}[]>([]);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
 
@@ -279,9 +322,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const navSections = [
     {
-      title: "Overview",
+      title: "Core Command",
       items: [
-        { id: 'analytics', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'command_center', label: 'Command Center', icon: ShieldCheck },
+        { id: 'analytics', label: 'Sovereign Intel', icon: LayoutDashboard },
       ]
     },
     {
@@ -293,7 +337,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     {
       title: "Academic Content",
       items: [
-        { id: 'curriculum', label: 'Modules', icon: BookOpen },
+        { id: 'courses', label: 'Courses', icon: BookOpen },
         { id: 'videos', label: 'Video Lab', icon: Video },
       ]
     },
@@ -354,7 +398,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const performanceData = React.useMemo(() => {
     if (!examResults || examResults.length === 0) return [{ date: 'N/A', average: 0 }];
     const grouped = examResults.reduce((acc: any, r) => {
-      const date = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const date = new Date(r.completedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       if (!acc[date]) acc[date] = { date, score: 0, count: 0 };
       acc[date].score += r.score;
       acc[date].count += 1;
@@ -481,6 +525,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingAssignment(null);
   };
 
+  const handleResetUser = async (userId: string) => {
+    if (window.confirm("Are you sure you want to reset this user's Knowledge Points to 0?")) {
+      const user = users.find(u => u.id === userId);
+      if (user) {
+        const updatedUser = { ...user, points: 0 };
+        await onUpdateUser(updatedUser);
+        setUsers(users.map(u => u.id === userId ? updatedUser : u));
+        showNotification(`Identity ${user.name} has been reset to 0 KP.`, 'info');
+      }
+    }
+  };
+
   const handleGradeSubmission = async (submission: AssignmentSubmission, file: File | null) => {
     let gradedFileUrl = submission.gradedFileUrl;
     if (file) {
@@ -490,7 +546,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await uploadBytes(storageRef, file);
       gradedFileUrl = await getDownloadURL(storageRef);
     }
-    const updatedSubmission = { ...submission, gradedFileUrl, status: 'graded' };
+    const updatedSubmission: AssignmentSubmission = { ...submission, gradedFileUrl, status: 'graded' };
     await onUpdateSubmission?.(updatedSubmission);
     setSubmissions(submissions.map(s => s.id === updatedSubmission.id ? updatedSubmission : s));
     setIsGradingModalOpen(false);
@@ -626,6 +682,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleStatusChange = (examId: string, newStatus: 'draft' | 'published' | 'closed') => {
+    const updatedExams = exams.map(e => e.id === examId ? { ...e, status: newStatus } : e);
+    setExams(updatedExams);
+    const updatedExam = updatedExams.find(e => e.id === examId);
+    if (updatedExam && onUpdateExam) {
+      onUpdateExam(updatedExam);
+    }
+  };
+
   const handleBulkPublishExams = () => {
     if (!onUpdateExam) return;
     const updatedExams = exams.map(exam => {
@@ -660,7 +725,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     let sortableUsers = users.filter(u => 
       u.name.toLowerCase().includes(userSearchTerm.toLowerCase()) || 
       u.email.toLowerCase().includes(userSearchTerm.toLowerCase()) || 
-      u.nid?.toLowerCase().includes(userSearchTerm.toLowerCase())
+      (u.nid || '').toLowerCase().includes(userSearchTerm.toLowerCase())
     );
     if (userSortConfig !== null) {
       sortableUsers.sort((a, b) => {
@@ -676,7 +741,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
     }
     return sortableUsers;
-  }, [users, userSortConfig]);
+  }, [users, userSortConfig, userSearchTerm]);
 
   const requestUserSort = (key: keyof User) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -691,7 +756,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const initialUserForm: Partial<User> = {
     name: '', email: '', role: 'student', status: 'active', points: 0,
     grade: Grade.G12, stream: Stream.NATURAL_SCIENCE, level: EducationLevel.SECONDARY,
-    gender: 'Male', nid: '', dob: '', salary: 0, school: '',
+    gender: 'Male', nid: '', dob: '', age: 0, salary: 0, school: '',
     preferredLanguage: 'en', phoneNumber: '', address: ''
   };
 
@@ -719,7 +784,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     content: '',
     contentType: 'video',
     videoUrl: '',
-    pdfUrl: ''
+    pdfUrl: '',
+    fileUrl: '',
+    fileName: ''
   });
 
   const [newObjective, setNewObjective] = useState('');
@@ -806,11 +873,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // Handle profile picture upload if a new file is selected
     if (profilePicFile) {
       try {
-        const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
-        const { storage } = await import('../firebase');
         const storageRef = ref(storage, `profile_pics/${editingUser?.id || `usr-${Date.now()}`}_${profilePicFile.name}`);
-        const snapshot = await uploadBytes(storageRef, profilePicFile);
-        photoUrl = await getDownloadURL(snapshot.ref);
+        const uploadTask = uploadBytesResumable(storageRef, profilePicFile);
+        
+        await new Promise((resolve, reject) => {
+          uploadTask.on('state_changed', 
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              console.log('Upload is ' + progress + '% done');
+            }, 
+            (error) => reject(error), 
+            () => resolve(null)
+          );
+        });
+        
+        photoUrl = await getDownloadURL(uploadTask.snapshot.ref);
       } catch (error) {
         console.error("Error uploading profile picture:", error);
         showNotification("Failed to upload profile picture. Using default.", "error");
@@ -833,6 +910,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (editingUser?.id) {
       onUpdateUser(userData);
       setUsers(prev => prev.map(u => u.id === userData.id ? userData : u));
+      showNotification(`Identity ${userData.name} updated successfully.`, 'success');
     } else {
       onAddUser(userData, password);
       setUsers(prev => [...prev, userData]);
@@ -863,7 +941,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // CURRICULUM CRUD LOGIC
   const handleCommitCourse = () => {
     if (!courseForm.title || !courseForm.code) {
-      showNotification("Validation Error: Title and Code are mandatory for curriculum modules.", 'error');
+      showNotification("Validation Error: Title and Code are mandatory for courses.", 'error');
       return;
     }
 
@@ -886,7 +964,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setCourseForm(initialCourseForm);
     setCourseWizardStep(1);
     setEditingLessonIndex(null);
-    setCurrentLesson({ title: '', content: '', contentType: 'video', videoUrl: '', pdfUrl: '' });
+    setCurrentLesson({ title: '', content: '', contentType: 'video', videoUrl: '', pdfUrl: '', fileUrl: '', fileName: '' });
   };
 
   const addLesson = () => {
@@ -910,7 +988,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     setCourseForm({ ...courseForm, lessons: updatedLessons });
-    setCurrentLesson({ title: '', content: '', contentType: 'video', videoUrl: '', pdfUrl: '' });
+    setCurrentLesson({ title: '', content: '', contentType: 'video', videoUrl: '', pdfUrl: '', fileUrl: '', fileName: '' });
     setEditingLessonIndex(null);
   };
 
@@ -932,7 +1010,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleDeleteCourse = (id: string) => {
-    if (window.confirm("Purge this module from the curriculum?")) {
+    if (window.confirm("Purge this course from the registry?")) {
       onDeleteCourse(id);
       setCourses(prev => prev.filter(c => c.id !== id));
     }
@@ -1113,6 +1191,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="space-y-16 animate-fadeIn pb-32 relative">
+          {/* Command Center View */}
+          {activeTab === 'command_center' && (
+            <div className="space-y-12 animate-fadeIn">
+              <div className="bg-gradient-to-br from-blue-900 to-black p-12 md:p-20 rounded-[5rem] border-8 border-black shadow-[30px_30px_0px_0px_rgba(59,130,246,1)] text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl -mr-32 -mt-32"></div>
+                <div className="relative z-10 space-y-8">
+                  <div className="flex items-center gap-6">
+                    <div className="w-20 h-20 bg-blue-600 rounded-3xl border-4 border-white flex items-center justify-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                      <ShieldCheck className="w-10 h-10" />
+                    </div>
+                    <div>
+                      <h2 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter leading-none">Command Center.</h2>
+                      <p className="text-blue-400 font-black uppercase tracking-widest text-sm mt-2">Authorized Access: Jemal Fano Haji</p>
+                    </div>
+                  </div>
+                  <p className="text-xl md:text-2xl font-bold text-gray-300 max-w-3xl italic">Welcome to the National Digital Education Command. Manage identities, curriculum, and assessments from this centralized hub.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                {navSections.flatMap(s => s.items).filter(i => i.id !== 'command_center').map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <button 
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id as any)}
+                      className="bg-white border-8 border-black rounded-[4rem] p-10 shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-8px] hover:shadow-[25px_25px_0px_0px_rgba(59,130,246,1)] transition-all flex flex-col items-center text-center group"
+                    >
+                      <div className="w-24 h-24 bg-gray-50 rounded-[2.5rem] border-4 border-black flex items-center justify-center mb-6 group-hover:bg-blue-50 transition-colors">
+                        <Icon className="w-12 h-12 text-black group-hover:text-blue-600 transition-colors" />
+                      </div>
+                      <h4 className="text-3xl font-black uppercase italic leading-none mb-2">{item.label}</h4>
+                      <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Access Protocol {item.id.toUpperCase()}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Notification Toast */}
           {notification && (
             <div className={`fixed top-10 right-10 z-[10000] px-10 py-6 rounded-3xl border-8 border-black shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] animate-bounceIn ${
@@ -1124,20 +1242,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
           
           {/* Sovereign Stats Bar */}
-          <div className="bg-black text-white p-12 rounded-[5rem] border-8 border-black shadow-[25px_25px_0px_0px_rgba(59,130,246,1)] flex flex-col md:flex-row justify-between items-center gap-10">
-            <div>
-               <h2 className="text-6xl font-black uppercase italic tracking-tighter leading-none text-white">
+          <div className="bg-black text-white p-8 md:p-12 rounded-[3.5rem] md:rounded-[5rem] border-8 border-black shadow-[15px_15px_0px_0px_rgba(59,130,246,1)] md:shadow-[25px_25px_0px_0px_rgba(59,130,246,1)] flex flex-col md:flex-row justify-between items-center gap-8 md:gap-10">
+            <div className="text-center md:text-left">
+               <h2 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter leading-none text-white">
                  {navSections.flatMap(s => s.items).find(i => i.id === activeTab)?.label || 'Sovereign Command'}.
                </h2>
                <p className="text-blue-400 font-black uppercase tracking-widest text-[10px] mt-4">Authorized Admin Hub: Jemal Fano Haji</p>
             </div>
-            <div className="flex gap-12">
+            <div className="flex gap-8 md:gap-12">
                <div className="text-center group">
-                  <p className="text-6xl font-black italic group-hover:text-blue-400 transition-colors">{users.length}</p>
+                  <p className="text-4xl md:text-6xl font-black italic group-hover:text-blue-400 transition-colors">{users.length}</p>
                   <p className="text-[10px] font-black uppercase opacity-60">Identities</p>
                </div>
                <div className="text-center group">
-                  <p className="text-6xl font-black italic text-green-400 group-hover:text-green-300 transition-colors">{courses.length}</p>
+                  <p className="text-4xl md:text-6xl font-black italic text-green-400 group-hover:text-green-300 transition-colors">{courses.length}</p>
                   <p className="text-[10px] font-black uppercase opacity-60">Modules</p>
                </div>
             </div>
@@ -1155,7 +1273,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         >
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 no-print">
              <div>
-               <h3 className="text-5xl font-black uppercase italic tracking-tighter text-blue-900">{rt.analytics}</h3>
+               <h3 className="text-4xl font-black uppercase italic tracking-tighter text-blue-900">{rt.analytics}</h3>
                <div className="flex gap-4 mt-4">
                  <button onClick={() => setReportLang('en')} className={`px-4 py-1 border-2 border-black font-black uppercase text-[10px] rounded-lg ${reportLang === 'en' ? 'bg-black text-white' : 'bg-white'}`}>{rt.english}</button>
                  <button onClick={() => setReportLang('om')} className={`px-4 py-1 border-2 border-black font-black uppercase text-[10px] rounded-lg ${reportLang === 'om' ? 'bg-black text-white' : 'bg-white'}`}>{rt.afanOromo}</button>
@@ -1299,7 +1417,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="p-8 bg-black text-white flex justify-between items-center border-b-8 border-black">
                    <h4 className="text-2xl font-black uppercase italic">{rt.students}</h4>
                 </div>
-                <div className="overflow-x-auto">
+                {/* Desktop Table */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-left">
                     <thead className="bg-gray-50 font-black uppercase text-[10px] border-b-4 border-black">
                         <tr>
@@ -1319,13 +1438,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </tbody>
                   </table>
                 </div>
+                {/* Mobile Cards */}
+                <div className="md:hidden divide-y-4 divide-black">
+                  {users.filter(u => u.role === 'student').slice(0, 10).map(u => (
+                    <div key={u.id} className="p-6 space-y-2">
+                      <p className="font-black italic">{u.name}</p>
+                      <div className="flex justify-between items-center">
+                        <p className="text-sm font-black text-blue-600">{u.points} KP</p>
+                        <span className={`px-3 py-1 border-2 border-black rounded-lg text-[8px] uppercase font-black ${u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>{u.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
              </div>
 
              <div className="bg-white border-8 border-black rounded-[5rem] overflow-hidden shadow-[30px_30px_0px_0px_rgba(0,0,0,1)]">
                 <div className="p-8 bg-blue-900 text-white flex justify-between items-center border-b-8 border-black">
                    <h4 className="text-2xl font-black uppercase italic">{rt.teachers}</h4>
                 </div>
-                <div className="overflow-x-auto">
+                {/* Desktop Table */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-left">
                     <thead className="bg-gray-50 font-black uppercase text-[10px] border-b-4 border-black">
                         <tr>
@@ -1345,6 +1477,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </tbody>
                   </table>
                 </div>
+                {/* Mobile Cards */}
+                <div className="md:hidden divide-y-4 divide-black">
+                  {users.filter(u => u.role === 'teacher').slice(0, 10).map(u => (
+                    <div key={u.id} className="p-6 space-y-2">
+                      <p className="font-black italic">{u.name}</p>
+                      <div className="flex justify-between items-center">
+                        <p className="text-sm font-black text-gray-500 italic">{u.department || 'N/A'}</p>
+                        <span className={`px-3 py-1 border-2 border-black rounded-lg text-[8px] uppercase font-black ${u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>{u.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
              </div>
           </div>
         </motion.div>
@@ -1355,67 +1499,118 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="space-y-12 animate-fadeIn">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
             <div>
-              <h3 className="text-5xl font-black uppercase italic tracking-tighter text-blue-900 leading-none">Assignment Submissions</h3>
+              <h3 className="text-4xl font-black uppercase italic tracking-tighter text-blue-900 leading-none">Assignment Submissions</h3>
               <p className="text-[10px] font-black uppercase text-gray-400 mt-2 tracking-widest">Grade student work and provide feedback</p>
             </div>
           </div>
 
           <div className="bg-white border-8 border-black rounded-[5rem] overflow-hidden shadow-[30px_30px_0px_0px_rgba(0,0,0,1)]">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50 font-black uppercase text-[10px] border-b-4 border-black">
-                <tr>
-                  <th className="p-8">Student</th>
-                  <th className="p-8">Assignment</th>
-                  <th className="p-8">Submitted At</th>
-                  <th className="p-8">Status</th>
-                  <th className="p-8">Grade</th>
-                  <th className="p-8 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y-4 divide-black">
-                {submissions.map(s => {
-                  const assignment = assignments.find(a => a.id === s.assignmentId);
-                  return (
-                    <tr key={s.id} className="font-bold hover:bg-gray-50 transition-colors">
-                      <td className="p-8">
-                        <p className="font-black italic">{s.studentName}</p>
-                        <p className="text-[8px] uppercase text-gray-400">ID: {s.studentId}</p>
-                      </td>
-                      <td className="p-8">
-                        <p className="font-black italic">{assignment?.title || 'Unknown Assignment'}</p>
-                        <p className="text-[8px] uppercase text-gray-400">{assignment?.courseCode}</p>
-                      </td>
-                      <td className="p-8 text-xs">{new Date(s.submittedAt).toLocaleString()}</td>
-                      <td className="p-8">
-                        <span className={`px-4 py-1 border-2 border-black rounded-xl text-[8px] uppercase ${s.grade !== undefined ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
-                          {s.grade !== undefined ? 'Graded' : 'Pending'}
-                        </span>
-                      </td>
-                      <td className="p-8">
-                        {s.grade !== undefined ? (
-                          <span className="font-black italic text-blue-600">{s.grade} / {assignment?.points || 100}</span>
-                        ) : (
-                          <span className="text-gray-400 italic">Not graded</span>
-                        )}
-                      </td>
-                      <td className="p-8 text-right">
-                        <button 
-                          onClick={() => { setSelectedSubmission(s); setIsGradingModalOpen(true); }}
-                          className="px-6 py-2 bg-black text-white rounded-xl border-2 border-black font-black uppercase text-[10px] shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] hover:translate-y-1 transition-all"
-                        >
-                          {s.grade !== undefined ? 'Update Grade' : 'Grade Now'}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {submissions.length === 0 && (
+            {/* Desktop Table View */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-gray-50 font-black uppercase text-[10px] border-b-4 border-black">
                   <tr>
-                    <td colSpan={6} className="p-20 text-center text-gray-400 font-black uppercase tracking-widest italic">No submissions found in registry.</td>
+                    <th className="p-8">Student</th>
+                    <th className="p-8">Assignment</th>
+                    <th className="p-8">Submitted At</th>
+                    <th className="p-8">Status</th>
+                    <th className="p-8">Grade</th>
+                    <th className="p-8 text-right">Actions</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y-4 divide-black">
+                  {submissions.map(s => {
+                    const assignment = assignments.find(a => a.id === s.assignmentId);
+                    return (
+                      <tr key={s.id} className="font-bold hover:bg-gray-50 transition-colors">
+                        <td className="p-8">
+                          <p className="font-black italic">{s.studentName}</p>
+                          <p className="text-[8px] uppercase text-gray-400">ID: {s.studentId}</p>
+                        </td>
+                        <td className="p-8">
+                          <p className="font-black italic">{assignment?.title || 'Unknown Assignment'}</p>
+                          <p className="text-[8px] uppercase text-gray-400">{assignment?.courseCode}</p>
+                        </td>
+                        <td className="p-8 text-xs">{new Date(s.submittedAt).toLocaleString()}</td>
+                        <td className="p-8">
+                          <span className={`px-4 py-1 border-2 border-black rounded-xl text-[8px] uppercase ${s.grade !== undefined ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                            {s.grade !== undefined ? 'Graded' : 'Pending'}
+                          </span>
+                        </td>
+                        <td className="p-8">
+                          {s.grade !== undefined ? (
+                            <span className="font-black italic text-blue-600">{s.grade} / {assignment?.points || 100}</span>
+                          ) : (
+                            <span className="text-gray-400 italic">Not graded</span>
+                          )}
+                        </td>
+                        <td className="p-8 text-right">
+                          <button 
+                            onClick={() => { setSelectedSubmission(s); setIsGradingModalOpen(true); }}
+                            className="px-6 py-2 bg-black text-white rounded-xl border-2 border-black font-black uppercase text-[10px] shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] hover:translate-y-1 transition-all"
+                          >
+                            {s.grade !== undefined ? 'Update Grade' : 'Grade Now'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {submissions.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-20 text-center text-gray-400 font-black uppercase tracking-widest italic">No submissions found in registry.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="lg:hidden divide-y-4 divide-black">
+              {submissions.map(s => {
+                const assignment = assignments.find(a => a.id === s.assignmentId);
+                return (
+                  <div key={s.id} className="p-8 space-y-4 bg-white hover:bg-gray-50 transition-colors">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-black italic text-lg">{s.studentName}</p>
+                        <p className="text-[8px] uppercase text-gray-400">ID: {s.studentId}</p>
+                      </div>
+                      <span className={`px-3 py-1 border-2 border-black rounded-lg text-[8px] uppercase font-black ${s.grade !== undefined ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                        {s.grade !== undefined ? 'Graded' : 'Pending'}
+                      </span>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-2xl border-2 border-black space-y-2">
+                      <p className="text-[10px] font-black uppercase text-gray-400">Assignment</p>
+                      <p className="font-black italic">{assignment?.title || 'Unknown'}</p>
+                      <p className="text-[8px] uppercase text-blue-600">{assignment?.courseCode}</p>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-[8px] font-black uppercase text-gray-400">Submitted</p>
+                        <p className="text-[10px] font-bold">{new Date(s.submittedAt).toLocaleDateString()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[8px] font-black uppercase text-gray-400">Grade</p>
+                        {s.grade !== undefined ? (
+                          <p className="font-black italic text-blue-600">{s.grade} / {assignment?.points || 100}</p>
+                        ) : (
+                          <p className="text-gray-400 italic text-[10px]">Not graded</p>
+                        )}
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => { setSelectedSubmission(s); setIsGradingModalOpen(true); }}
+                      className="w-full py-4 bg-black text-white rounded-xl border-2 border-black font-black uppercase text-[10px] shadow-[4px_4px_0px_0px_rgba(59,130,246,1)]"
+                    >
+                      {s.grade !== undefined ? 'Update Grade' : 'Grade Now'}
+                    </button>
+                  </div>
+                );
+              })}
+              {submissions.length === 0 && (
+                <div className="p-20 text-center text-gray-400 font-black uppercase tracking-widest italic">No submissions found.</div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1425,13 +1620,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="space-y-12 animate-fadeIn">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
              <div>
-               <h3 className="text-5xl font-black uppercase italic tracking-tighter text-blue-900 leading-none">Identity Registry</h3>
+               <h3 className="text-4xl font-black uppercase italic tracking-tighter text-blue-900 leading-none">Identity Registry</h3>
                <p className="text-[10px] font-black uppercase text-gray-400 mt-2 tracking-widest">National Sovereign Citizen Database</p>
              </div>
              <div className="flex gap-4 w-full md:w-auto">
                <input 
                  type="text" 
-                 placeholder="Search Registry..." 
+                 placeholder="Search by Name, Email, or NID..." 
                  className="flex-1 md:w-80 p-5 bg-white border-8 border-black rounded-3xl font-black text-sm outline-none focus:shadow-[8px_8px_0px_0px_rgba(59,130,246,1)] transition-all"
                  value={userSearchTerm}
                  onChange={(e) => setUserSearchTerm(e.target.value)}
@@ -1459,7 +1654,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
              </div>
           </div>
           <div className="bg-white border-8 border-black rounded-[5rem] overflow-hidden shadow-[30px_30px_0px_0px_rgba(0,0,0,1)]">
-             <table className="w-full text-left border-collapse">
+            {/* Desktop Table View */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
                 <thead className="bg-black text-white border-b-[12px] border-black font-black uppercase text-[10px] tracking-[0.2em]">
                    <tr>
                      <th className="p-10 cursor-pointer hover:text-blue-400 transition-colors" onClick={() => requestUserSort('name')}>
@@ -1528,6 +1725,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                <Edit className="w-6 h-6" />
                              </button>
                              <button 
+                               onClick={() => handleResetUser(u.id)}
+                               className="p-4 bg-orange-500 text-white border-4 border-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 active:shadow-none transition-all"
+                               title="Reset Identity"
+                             >
+                               <RefreshCw className="w-6 h-6" />
+                             </button>
+                             <button 
                                onClick={() => handleDeleteUser(u.id)}
                                className="p-4 bg-rose-600 text-white border-4 border-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 active:shadow-none transition-all"
                                title="Purge Identity"
@@ -1539,7 +1743,78 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                      </tr>
                    ))}
                 </tbody>
-             </table>
+              </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="lg:hidden divide-y-8 divide-black">
+              {sortedUsers.map(u => (
+                <div key={u.id} className="p-8 space-y-6 bg-white hover:bg-blue-50 transition-all">
+                  <div className="flex items-center gap-6">
+                    <div className="relative">
+                      <img src={u.photo} className="w-24 h-24 rounded-3xl border-4 border-black bg-gray-100 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" alt="" />
+                      {u.status === 'active' && <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 border-4 border-black rounded-full"></div>}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-3xl font-black italic leading-tight tracking-tighter">{u.name}</p>
+                      <p className="text-xs text-gray-500 font-bold truncate">{u.email}</p>
+                      <div className="flex gap-2 mt-2">
+                        <span className={`px-3 py-1 rounded-lg border-2 border-black text-[8px] uppercase font-black ${u.role === 'admin' ? 'bg-black text-white' : u.role === 'teacher' ? 'bg-orange-400' : 'bg-blue-100'}`}>
+                          {u.role}
+                        </span>
+                        <span className={`px-3 py-1 rounded-lg border-2 border-black text-[8px] uppercase font-black ${u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>
+                          {u.status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-6 rounded-3xl border-4 border-black">
+                    <div className="space-y-1">
+                      <p className="text-[8px] font-black uppercase text-gray-400">NID</p>
+                      <p className="text-sm font-black italic">{u.nid || 'N/A'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[8px] font-black uppercase text-gray-400">Level</p>
+                      <p className="text-sm font-black italic">{u.grade || 'STAFF'}</p>
+                    </div>
+                    <div className="col-span-2 space-y-1">
+                      <p className="text-[8px] font-black uppercase text-gray-400">Knowledge Points</p>
+                      <p className="text-2xl font-black italic text-blue-600">{u.points.toLocaleString()} KP</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {u.role === 'student' && (
+                      <button 
+                        onClick={() => setSelectedStudentForProgress(u)}
+                        className="flex items-center justify-center gap-2 p-4 bg-green-600 text-white border-4 border-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-black uppercase text-[10px]"
+                      >
+                        <TrendingUp className="w-4 h-4" /> Progress
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => openUserModal(u)}
+                      className="flex items-center justify-center gap-2 p-4 bg-blue-600 text-white border-4 border-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-black uppercase text-[10px]"
+                    >
+                      <Edit className="w-4 h-4" /> Edit
+                    </button>
+                    <button 
+                      onClick={() => handleResetUser(u.id)}
+                      className="flex items-center justify-center gap-2 p-4 bg-orange-500 text-white border-4 border-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-black uppercase text-[10px]"
+                    >
+                      <RefreshCw className="w-4 h-4" /> Reset
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteUser(u.id)}
+                      className="flex items-center justify-center gap-2 p-4 bg-rose-600 text-white border-4 border-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-black uppercase text-[10px]"
+                    >
+                      <Trash2 className="w-4 h-4" /> Purge
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -1550,7 +1825,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               
               <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b-8 border-black pb-10 gap-6">
                 <div className="space-y-2">
-                  <h3 className="text-6xl md:text-8xl font-black uppercase italic text-blue-900 tracking-tighter leading-none">Identity Architect.</h3>
+                  <h3 className="text-4xl md:text-6xl font-black uppercase italic text-blue-900 tracking-tighter leading-none">Identity Architect.</h3>
                   <p className="text-xl font-black uppercase text-gray-400 tracking-widest">Registry Deployment Protocol</p>
                 </div>
                 <div className="text-right">
@@ -1588,13 +1863,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex justify-between">Legal Name <span className="text-rose-500">*REQUIRED</span></label>
-                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-blue-50 focus:border-blue-600 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.name} onChange={e => setUserForm({...userForm, name: e.target.value})} placeholder="Full Legal Name" />
+                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-blue-50 focus:border-blue-600 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.name || ''} onChange={e => setUserForm({...userForm, name: e.target.value})} placeholder="Full Legal Name" />
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex justify-between">Identity Email <span className="text-blue-600">AUTO-GEN IF STUDENT</span></label>
                     <input 
                       className={`w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] ${userForm.role === 'student' ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'focus:bg-blue-50 focus:border-blue-600'}`} 
-                      value={userForm.role === 'student' && !editingUser ? (userForm.nid ? `${userForm.nid.toLowerCase().replace(/[^a-z0-9]/g, '')}@students.iftu.edu.et` : 'Auto-generated from NID') : userForm.email} 
+                      value={userForm.role === 'student' && !editingUser ? (userForm.nid ? `${userForm.nid.toLowerCase().replace(/[^a-z0-9]/g, '')}@students.iftu.edu.et` : 'Auto-generated from NID') : (userForm.email || '')} 
                       onChange={e => setUserForm({...userForm, email: e.target.value})} 
                       disabled={userForm.role === 'student' && !editingUser}
                       placeholder={userForm.role === 'student' ? 'Auto-generated from NID' : 'example@iftu.edu.et'}
@@ -1605,11 +1880,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex justify-between">National ID (NID) <span className="text-rose-500">*REQUIRED</span></label>
-                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-blue-50 focus:border-blue-600 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.nid} onChange={e => setUserForm({...userForm, nid: e.target.value})} placeholder="ET-2025-XXXX" />
+                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-blue-50 focus:border-blue-600 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.nid || ''} onChange={e => setUserForm({...userForm, nid: e.target.value})} placeholder="ET-2025-XXXX" />
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex justify-between">Mobile Phone <span className="text-blue-600">SMS GATEWAY</span></label>
-                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-blue-50 focus:border-blue-600 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.phoneNumber} onChange={e => setUserForm({...userForm, phoneNumber: e.target.value})} placeholder="+251 9XX XXX XXX" />
+                    <input type="tel" className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-blue-50 focus:border-blue-600 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.phoneNumber || ''} onChange={e => setUserForm({...userForm, phoneNumber: e.target.value})} placeholder="+251 9XX XXX XXX" />
                   </div>
                 </div>
 
@@ -1636,7 +1911,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Knowledge Points (KP)</label>
-                    <input type="number" className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-orange-50 focus:border-orange-400 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.points} onChange={e => setUserForm({...userForm, points: parseInt(e.target.value)})} />
+                    <input type="number" className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-orange-50 focus:border-orange-400 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.points || 0} onChange={e => setUserForm({...userForm, points: parseInt(e.target.value) || 0})} />
                   </div>
                 </div>
 
@@ -1662,15 +1937,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Monthly Remuneration (ETB)</label>
-                    <input type="number" className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-green-50 focus:border-green-600 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.salary} onChange={e => setUserForm({...userForm, salary: parseInt(e.target.value)})} />
+                    <input type="number" className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-green-50 focus:border-green-600 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.salary || 0} onChange={e => setUserForm({...userForm, salary: parseInt(e.target.value) || 0})} />
+                  </div>
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Age</label>
+                    <input type="number" className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-green-50 focus:border-green-600 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" value={userForm.age || 0} onChange={e => setUserForm({...userForm, age: parseInt(e.target.value) || 0})} placeholder="Age" />
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-col md:flex-row gap-8 pt-12 border-t-8 border-black">
                 <button onClick={() => setIsIdentityModalOpen(false)} className="flex-1 py-8 border-8 border-black rounded-[3rem] font-black uppercase text-2xl hover:bg-gray-50 transition-all">Abort Changes</button>
-                <button onClick={handleCommitUser} className="flex-1 py-8 bg-black text-white border-8 border-black rounded-[3rem] font-black uppercase text-2xl shadow-[15px_15px_0px_0px_rgba(59,130,246,1)] hover:translate-y-2 active:shadow-none transition-all">
-                  {editingUser ? 'Update Identity' : 'Synchronize & Dispatch SMS'}
+                <button onClick={handleCommitUser} disabled={isUploadingPic} className={`flex-1 py-8 bg-black text-white border-8 border-black rounded-[3rem] font-black uppercase text-2xl shadow-[15px_15px_0px_0px_rgba(59,130,246,1)] hover:translate-y-2 active:shadow-none transition-all ${isUploadingPic ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {isUploadingPic ? 'Synchronizing...' : (editingUser ? 'Update Identity' : 'Synchronize & Dispatch SMS')}
                 </button>
               </div>
               {!editingUser && (
@@ -1687,7 +1966,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-[4rem] border-8 border-black shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] p-12 max-w-5xl w-full max-h-[90vh] overflow-y-auto relative">
             <button onClick={() => setIsQuestionBankOpen(false)} className="absolute top-8 right-8 text-4xl font-black hover:text-rose-600 transition-colors">×</button>
-            <h3 className="text-5xl font-black uppercase italic mb-8 text-purple-900">Question Bank</h3>
+            <h3 className="text-4xl font-black uppercase italic mb-8 text-purple-900">Question Bank</h3>
             
             {!isAddingQuestion ? (
               <div className="space-y-8">
@@ -1731,7 +2010,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <label className="block text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Question Text</label>
                   <textarea 
-                    value={questionForm.text} 
+                    value={questionForm.text || ''} 
                     onChange={e => setQuestionForm({...questionForm, text: e.target.value})}
                     className="w-full p-6 bg-gray-50 border-4 border-black rounded-2xl font-bold outline-none focus:bg-white min-h-[120px]"
                     placeholder="Enter the question text..."
@@ -1742,7 +2021,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div>
                     <label className="block text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Type</label>
                     <select 
-                      value={questionForm.type} 
+                      value={questionForm.type || 'multiple-choice'} 
                       onChange={e => setQuestionForm({...questionForm, type: e.target.value as any})}
                       className="w-full p-6 bg-gray-50 border-4 border-black rounded-2xl font-bold outline-none focus:bg-white"
                     >
@@ -1756,7 +2035,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <input 
                       type="number" 
                       min="1"
-                      value={questionForm.points} 
+                      value={questionForm.points || 1} 
                       onChange={e => setQuestionForm({...questionForm, points: parseInt(e.target.value) || 1})}
                       className="w-full p-6 bg-gray-50 border-4 border-black rounded-2xl font-bold outline-none focus:bg-white"
                     />
@@ -1825,7 +2104,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <label className="block text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Category</label>
                     <input 
                       type="text" 
-                      value={questionForm.category} 
+                      value={questionForm.category || ''} 
                       onChange={e => setQuestionForm({...questionForm, category: e.target.value})}
                       className="w-full p-6 bg-gray-50 border-4 border-black rounded-2xl font-bold outline-none focus:bg-white"
                       placeholder="e.g. Algebra"
@@ -1864,7 +2143,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="text" 
                   required
                   minLength={5}
-                  value={examForm.title} 
+                  value={examForm.title || ''} 
                   onChange={e => { setExamForm({...examForm, title: e.target.value}); setExamErrors({}); }}
                   className={`w-full p-6 bg-gray-50 border-4 border-black rounded-2xl font-bold outline-none focus:bg-white ${examErrors.title ? 'border-rose-500 bg-rose-50' : ''}`}
                   placeholder="e.g. National Mock Exam 2026"
@@ -1876,7 +2155,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="block text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Subject</label>
                   <input 
                     type="text" 
-                    value={examForm.subject} 
+                    value={examForm.subject || ''} 
                     onChange={e => setExamForm({...examForm, subject: e.target.value})}
                     className="w-full p-6 bg-gray-50 border-4 border-black rounded-2xl font-bold outline-none focus:bg-white"
                   />
@@ -1884,7 +2163,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <label className="block text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Difficulty</label>
                   <select 
-                    value={examForm.difficulty} 
+                    value={examForm.difficulty || 'Medium'} 
                     onChange={e => setExamForm({...examForm, difficulty: e.target.value as any})}
                     className="w-full p-6 bg-gray-50 border-4 border-black rounded-2xl font-bold outline-none focus:bg-white"
                   >
@@ -1963,10 +2242,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="absolute top-0 left-0 w-full h-6 ethiopian-gradient"></div>
               
               <div className="flex justify-between items-end border-b-8 border-black pb-10">
-                <h3 className="text-6xl md:text-8xl font-black uppercase italic text-green-900 tracking-tighter leading-none">Module Architect.</h3>
+                <h3 className="text-4xl md:text-6xl font-black uppercase italic text-green-900 tracking-tighter leading-none">Course Architect.</h3>
                 <div className="text-right">
                    <p className="text-[10px] font-black uppercase text-gray-400">Registry Trace</p>
-                   <p className="text-2xl font-black italic">{courseForm.id || 'NEW_MODULE'}</p>
+                   <p className="text-2xl font-black italic">{courseForm.id || 'NEW_COURSE'}</p>
                 </div>
               </div>
 
@@ -1988,19 +2267,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                     <div className="space-y-4">
                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Title</label>
-                      <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-green-50" value={courseForm.title} onChange={e => setCourseForm({...courseForm, title: e.target.value})} placeholder="e.g. Advanced Calculus" />
+                      <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-green-50" value={courseForm.title || ''} onChange={e => setCourseForm({...courseForm, title: e.target.value})} placeholder="e.g. Advanced Calculus" />
                     </div>
                     <div className="space-y-4">
                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Code</label>
-                      <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-green-50" value={courseForm.code} onChange={e => setCourseForm({...courseForm, code: e.target.value})} placeholder="e.g. MATH-401" />
+                      <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-green-50" value={courseForm.code || ''} onChange={e => setCourseForm({...courseForm, code: e.target.value})} placeholder="e.g. MATH-401" />
                     </div>
                     <div className="space-y-4 md:col-span-2">
                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Subject</label>
-                      <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-green-50" value={courseForm.subject} onChange={e => setCourseForm({...courseForm, subject: e.target.value})} placeholder="e.g. Mathematics" />
+                      <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-green-50" value={courseForm.subject || ''} onChange={e => setCourseForm({...courseForm, subject: e.target.value})} placeholder="e.g. Mathematics" />
                     </div>
                     <div className="space-y-4 md:col-span-2">
                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Description</label>
-                      <textarea className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none h-32 focus:bg-green-50" value={courseForm.description} onChange={e => setCourseForm({...courseForm, description: e.target.value})} placeholder="Enter a comprehensive description for this module..." />
+                      <textarea className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none h-32 focus:bg-green-50" value={courseForm.description || ''} onChange={e => setCourseForm({...courseForm, description: e.target.value})} placeholder="Enter a comprehensive description for this module..." />
                     </div>
                   </div>
                 </div>
@@ -2023,8 +2302,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </select>
                     </div>
                     <div className="space-y-4 md:col-span-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Instructor Name</label>
-                      <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-blue-50" value={courseForm.instructor} onChange={e => setCourseForm({...courseForm, instructor: e.target.value})} placeholder="e.g. Dr. Abebe Bikila" />
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Instructor</label>
+                      <div className="flex gap-4">
+                        <select 
+                          className="flex-1 p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-blue-50" 
+                          value={users.find(u => u.name === courseForm.instructor)?.id || ''} 
+                          onChange={e => {
+                            const selectedUser = users.find(u => u.id === e.target.value);
+                            if (selectedUser) {
+                              setCourseForm({
+                                ...courseForm, 
+                                instructor: selectedUser.name,
+                                instructorId: selectedUser.id,
+                                instructorEmail: selectedUser.email,
+                                instructorPhoto: selectedUser.photo
+                              });
+                            } else {
+                              setCourseForm({
+                                ...courseForm, 
+                                instructor: '',
+                                instructorId: '',
+                                instructorEmail: '',
+                                instructorPhoto: ''
+                              });
+                            }
+                          }}
+                        >
+                          <option value="">Select Instructor from Faculty</option>
+                          {users.filter(u => u.role === 'teacher' || u.role === 'admin').map(u => (
+                            <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                          ))}
+                        </select>
+                        <div className="flex-1 space-y-4">
+                          <input 
+                            className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none focus:bg-blue-50" 
+                            value={courseForm.instructor || ''} 
+                            onChange={e => setCourseForm({...courseForm, instructor: e.target.value})} 
+                            placeholder="Or enter name manually..." 
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2084,18 +2401,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div className="space-y-4">
                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Lesson Title</label>
-                        <input className="w-full p-6 border-4 border-black rounded-2xl font-black focus:bg-white" value={currentLesson.title} onChange={e => setCurrentLesson({...currentLesson, title: e.target.value})} />
+                        <input className="w-full p-6 border-4 border-black rounded-2xl font-black focus:bg-white" value={currentLesson.title || ''} onChange={e => setCurrentLesson({...currentLesson, title: e.target.value})} />
                       </div>
                       <div className="space-y-4">
                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Content Type</label>
-                        <select className="w-full p-6 border-4 border-black rounded-2xl font-black focus:bg-white" value={currentLesson.contentType} onChange={e => setCurrentLesson({...currentLesson, contentType: e.target.value as 'video' | 'pdf'})}>
+                        <select className="w-full p-6 border-4 border-black rounded-2xl font-black focus:bg-white" value={currentLesson.contentType} onChange={e => setCurrentLesson({...currentLesson, contentType: e.target.value as 'video' | 'reading' | 'document'})}>
                           <option value="video">Video Stream</option>
-                          <option value="pdf">Secure PDF</option>
+                          <option value="reading">Secure PDF</option>
+                          <option value="document">Document (PDF/Word/PPT)</option>
                         </select>
                       </div>
                       <div className="md:col-span-2 space-y-4">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Resource URL</label>
-                        <input className="w-full p-6 border-4 border-black rounded-2xl font-black focus:bg-white" placeholder={currentLesson.contentType === 'video' ? 'YouTube URL' : 'PDF URL'} value={currentLesson.contentType === 'video' ? currentLesson.videoUrl : currentLesson.pdfUrl} onChange={e => setCurrentLesson({...currentLesson, [currentLesson.contentType === 'video' ? 'videoUrl' : 'pdfUrl']: e.target.value})} />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                          {currentLesson.contentType === 'document' ? 'Upload Lesson Document' : 'Resource URL'}
+                        </label>
+                        {currentLesson.contentType === 'document' ? (
+                          <div className="flex flex-col gap-4">
+                            <input 
+                              type="file" 
+                              accept=".pdf,.doc,.docx,.ppt,.pptx"
+                              className="w-full p-6 border-4 border-black rounded-2xl font-black focus:bg-white bg-white"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  // In a real app, we would upload to Firebase Storage
+                                  // For now, we'll use a data URL for demo purposes
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    setCurrentLesson({
+                                      ...currentLesson,
+                                      fileUrl: reader.result as string,
+                                      fileName: file.name
+                                    });
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                            {currentLesson.fileName && (
+                              <p className="text-xs font-black text-blue-600 uppercase">Selected: {currentLesson.fileName}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <input className="w-full p-6 border-4 border-black rounded-2xl font-black focus:bg-white" placeholder={currentLesson.contentType === 'video' ? 'YouTube URL' : 'PDF URL'} value={currentLesson.contentType === 'video' ? currentLesson.videoUrl : currentLesson.pdfUrl} onChange={e => setCurrentLesson({...currentLesson, [currentLesson.contentType === 'video' ? 'videoUrl' : 'pdfUrl']: e.target.value})} />
+                        )}
                       </div>
                       <div className="md:col-span-2 space-y-4">
                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Lesson Content (Markdown)</label>
@@ -2106,7 +2455,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {editingLessonIndex !== null ? 'Update Lesson' : '＋ Add Lesson to Curriculum'}
                     </button>
                     {editingLessonIndex !== null && (
-                      <button onClick={() => { setEditingLessonIndex(null); setCurrentLesson({ title: '', content: '', contentType: 'video', videoUrl: '', pdfUrl: '' }); }} className="w-full mt-4 text-rose-600 font-black uppercase text-xs">Cancel Edit</button>
+                      <button onClick={() => { setEditingLessonIndex(null); setCurrentLesson({ title: '', content: '', contentType: 'video', videoUrl: '', pdfUrl: '', fileUrl: '', fileName: '' }); }} className="w-full mt-4 text-rose-600 font-black uppercase text-xs">Cancel Edit</button>
                     )}
                   </div>
 
@@ -2236,7 +2585,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {courseWizardStep < 5 ? (
                   <button onClick={() => setCourseWizardStep(prev => prev + 1)} className="flex-2 py-8 bg-black text-white border-8 border-black rounded-[3rem] font-black uppercase text-2xl shadow-[15px_15px_0px_0px_rgba(0,208,90,1)] hover:translate-y-2 active:shadow-none transition-all">Next Step</button>
                 ) : (
-                  <button onClick={() => handleCommitCourse()} className="flex-2 py-8 bg-black text-white border-8 border-black rounded-[3rem] font-black uppercase text-2xl shadow-[15px_15px_0px_0px_rgba(0,208,90,1)] hover:translate-y-2 active:shadow-none transition-all">Synchronize Module</button>
+                  <button onClick={() => handleCommitCourse()} className="flex-2 py-8 bg-black text-white border-8 border-black rounded-[3rem] font-black uppercase text-2xl shadow-[15px_15px_0px_0px_rgba(0,208,90,1)] hover:translate-y-2 active:shadow-none transition-all">Synchronize Course</button>
                 )}
               </div>
            </div>
@@ -2250,7 +2599,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="absolute top-0 left-0 w-full h-6 ethiopian-gradient"></div>
               
               <div className="flex justify-between items-end border-b-8 border-black pb-10">
-                <h3 className="text-6xl md:text-8xl font-black uppercase italic text-red-900 tracking-tighter leading-none">Bulletin Architect.</h3>
+                <h3 className="text-4xl md:text-6xl font-black uppercase italic text-red-900 tracking-tighter leading-none">Bulletin Architect.</h3>
                 <div className="text-right">
                    <p className="text-[10px] font-black uppercase text-gray-400">Registry Trace</p>
                    <p className="text-2xl font-black italic">{newsForm.id || 'NEW_BULLETIN'}</p>
@@ -2262,11 +2611,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <h4 className="text-xl font-black uppercase italic border-l-8 border-red-600 pl-4">Content</h4>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Title</label>
-                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none" value={newsForm.title} onChange={e => setNewsForm({...newsForm, title: e.target.value})} />
+                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none" value={newsForm.title || ''} onChange={e => setNewsForm({...newsForm, title: e.target.value})} />
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Tag</label>
-                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none" value={newsForm.tag} onChange={e => setNewsForm({...newsForm, tag: e.target.value})} />
+                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none" value={newsForm.tag || ''} onChange={e => setNewsForm({...newsForm, tag: e.target.value})} />
                   </div>
                 </div>
 
@@ -2274,19 +2623,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <h4 className="text-xl font-black uppercase italic border-l-8 border-blue-600 pl-4">Media</h4>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Image URL</label>
-                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none" value={newsForm.image} onChange={e => setNewsForm({...newsForm, image: e.target.value})} />
+                    <input className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none" value={newsForm.image || ''} onChange={e => setNewsForm({...newsForm, image: e.target.value})} />
                   </div>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Summary</label>
-                <textarea className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none h-24" value={newsForm.summary} onChange={e => setNewsForm({...newsForm, summary: e.target.value})} />
+                <textarea className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none h-24" value={newsForm.summary || ''} onChange={e => setNewsForm({...newsForm, summary: e.target.value})} />
               </div>
 
               <div className="space-y-4">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Full Content</label>
-                <textarea className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none h-48" value={newsForm.content} onChange={e => setNewsForm({...newsForm, content: e.target.value})} />
+                <textarea className="w-full p-6 border-4 border-black rounded-2xl font-black text-lg outline-none h-48" value={newsForm.content || ''} onChange={e => setNewsForm({...newsForm, content: e.target.value})} />
               </div>
 
               <div className="flex gap-8 pt-12">
@@ -2297,13 +2646,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* Curriculum View */}
-      {activeTab === 'curriculum' && (
+      {/* Courses View */}
+      {activeTab === 'courses' && (
         <div className="space-y-12 animate-fadeIn">
           <div className="flex justify-between items-center">
-             <h3 className="text-5xl font-black uppercase italic tracking-tighter text-blue-900">Curriculum Architect</h3>
+             <h3 className="text-4xl font-black uppercase italic tracking-tighter text-blue-900">Course Registry</h3>
              {/* Fix: setCourseForm and initialCourseForm now defined */}
-             <button onClick={() => { setCourseForm(initialCourseForm); setCourseWizardStep(1); setIsAddingCourse(true); }} className="bg-green-600 text-white px-10 py-5 rounded-3xl border-8 border-black font-black uppercase text-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all">＋ Deploy New Module</button>
+             <button onClick={() => { setCourseForm(initialCourseForm); setCourseWizardStep(1); setIsAddingCourse(true); }} className="bg-green-600 text-white px-10 py-5 rounded-3xl border-8 border-black font-black uppercase text-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all">＋ Deploy New Course</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
             {courses.map(course => (
@@ -2313,15 +2662,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <p className="text-[10px] font-black uppercase text-gray-400 mb-1">{course.code}</p>
                   <h4 className="text-2xl font-black uppercase italic leading-none">{course.title}</h4>
                   <p className="text-[10px] font-bold text-blue-600 uppercase mt-2">{course.subject} / {course.grade}</p>
+                  <p className="text-[10px] font-black text-gray-500 uppercase mt-1 italic">Instructor: {course.instructor}</p>
                 </div>
                 <div className="mt-8 pt-6 border-t-2 border-black flex justify-between items-center">
-                   <p className="text-xs font-black uppercase text-gray-400">{course.lessons.length} Modules</p>
+                   <p className="text-xs font-black uppercase text-gray-400">{course.lessons.length} Lessons</p>
                    <div className="flex gap-3">
                       <button onClick={() => handleGenerateAIExam(course)} className="bg-purple-600 text-white px-6 py-2 rounded-lg border-2 border-black font-black uppercase text-[10px] flex items-center gap-2">
                         <Sparkles className="w-3 h-3" /> AI Exam
                       </button>
                       {/* Fix: setCourseForm and editingCourse handled */}
-                      <button onClick={() => { setEditingCourse(course); setCourseForm(course); setCourseWizardStep(1); setIsAddingCourse(true); }} className="bg-black text-white px-6 py-2 rounded-lg border-2 border-black font-black uppercase text-[10px]">Edit Architect</button>
+                      <button onClick={() => { setEditingCourse(course); setCourseForm(course); setCourseWizardStep(1); setIsAddingCourse(true); }} className="bg-black text-white px-6 py-2 rounded-lg border-2 border-black font-black uppercase text-[10px]">Edit Course</button>
                       <button onClick={() => handleDeleteCourse(course.id)} className="text-rose-600 font-black uppercase text-[10px] p-2">🗑️</button>
                    </div>
                 </div>
@@ -2336,7 +2686,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="space-y-12 animate-fadeIn">
           <div className="flex justify-between items-center">
              <div className="flex items-center gap-4">
-               <h3 className="text-5xl font-black uppercase italic tracking-tighter text-blue-900">Exam Architect</h3>
+               <h3 className="text-4xl font-black uppercase italic tracking-tighter text-blue-900">Exam Architect</h3>
                {exams.length > 0 && (
                  <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                    <input 
@@ -2374,7 +2724,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 </div>
                 <div className="pr-8">
-                  <h4 className="text-2xl font-black uppercase italic leading-none">{exam.title}</h4>
+                  <div className="flex justify-between items-start gap-2">
+                    <h4 className="text-2xl font-black uppercase italic leading-none">{exam.title}</h4>
+                    <select 
+                      value={exam.status} 
+                      onChange={(e) => handleStatusChange(exam.id, e.target.value as 'draft' | 'published' | 'closed')}
+                      className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border-2 border-black outline-none cursor-pointer transition-colors ${
+                        exam.status === 'published' ? 'bg-green-400' : 
+                        exam.status === 'closed' ? 'bg-rose-400' : 'bg-yellow-400'
+                      }`}
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="published">Published</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                  </div>
                   <p className="text-[10px] font-bold text-blue-600 uppercase mt-2">{exam.subject} / {exam.grade}</p>
                   <div className="flex gap-2 mt-2">
                     <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase border-2 border-black bg-purple-400">
@@ -2421,7 +2785,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'assignments' && (
         <div className="space-y-12 animate-fadeIn">
           <div className="flex justify-between items-center">
-             <h3 className="text-5xl font-black uppercase italic tracking-tighter text-blue-900">Assignment Architect</h3>
+             <h3 className="text-4xl font-black uppercase italic tracking-tighter text-blue-900">Assignment Architect</h3>
              <button onClick={() => { setIsAssignmentModalOpen(true); setEditingAssignment(null); }} className="bg-green-600 text-white px-10 py-5 rounded-3xl border-8 border-black font-black uppercase text-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all">＋ Deploy New Assignment</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
@@ -2429,9 +2793,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div key={assignment.id} className="bg-white border-8 border-black rounded-[3rem] p-8 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between group overflow-hidden relative">
                 <div className="absolute top-0 left-0 w-full h-2 ethiopian-gradient"></div>
                 <div>
-                  <p className="text-[10px] font-black uppercase text-gray-400 mb-1">{assignment.courseCode}</p>
+                  <div className="flex justify-between items-start mb-2">
+                    <p className="text-[10px] font-black uppercase text-gray-400">{assignment.courseCode}</p>
+                    {assignment.progressStatus && (
+                      <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border-2 border-black ${
+                        assignment.progressStatus === 'Completed' ? 'bg-green-400' :
+                        assignment.progressStatus === 'In Progress' ? 'bg-blue-400' :
+                        assignment.progressStatus === 'Needs Review' ? 'bg-orange-400' :
+                        'bg-gray-200'
+                      }`}>
+                        {assignment.progressStatus}
+                      </span>
+                    )}
+                  </div>
                   <h4 className="text-2xl font-black uppercase italic leading-none">{assignment.title}</h4>
-                  <p className="text-[10px] font-bold text-blue-600 uppercase mt-2">Due: {assignment.dueDate}</p>
+                  <div className="flex flex-col mt-2">
+                    <p className="text-[10px] font-bold text-blue-600 uppercase">Due: {assignment.dueDate}</p>
+                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-tighter">
+                      {getEthiopianDateString(assignment.dueDate)}
+                    </p>
+                  </div>
                 </div>
                 <div className="mt-8 pt-6 border-t-2 border-black flex justify-between items-center">
                    <p className="text-xs font-black uppercase text-gray-400">{assignment.points} Points</p>
@@ -2456,7 +2837,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'bulletins' && (
         <div className="space-y-12 animate-fadeIn">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-             <h3 className="text-5xl font-black uppercase italic tracking-tighter text-blue-900">National Bulletins</h3>
+             <h3 className="text-4xl font-black uppercase italic tracking-tighter text-blue-900">National Bulletins</h3>
              <div className="flex gap-4">
                <button onClick={() => {
                  setNewsForm({
@@ -2503,11 +2884,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'results' && (
         <div className="space-y-12 animate-fadeIn">
           <div className="flex justify-between items-center">
-             <h3 className="text-5xl font-black uppercase italic tracking-tighter text-blue-900">National Exam Registry</h3>
+             <h3 className="text-4xl font-black uppercase italic tracking-tighter text-blue-900">National Exam Registry</h3>
              <button onClick={() => downloadCSV(examResults, "National_Exam_Results")} className="bg-green-600 text-white px-8 py-3 rounded-2xl border-4 border-black font-black uppercase text-[10px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1">Export Results (CSV)</button>
           </div>
           <div className="bg-white border-8 border-black rounded-[5rem] overflow-hidden shadow-[30px_30px_0px_0px_rgba(0,0,0,1)]">
-             <table className="w-full text-left border-collapse">
+            {/* Desktop Table View */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
                 <thead className="bg-gray-50 border-b-8 border-black font-black uppercase text-[10px] tracking-widest text-gray-400">
                    <tr>
                      <th className="p-10">Student Identity</th>
@@ -2563,7 +2946,52 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                      );
                    })}
                 </tbody>
-             </table>
+              </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="lg:hidden divide-y-8 divide-black">
+              {examResults.map((res, idx) => {
+                const student = users.find(u => u.id === res.studentId);
+                const exam = exams.find(e => e.id === res.examId);
+                return (
+                  <div key={`${res.examId}-${res.studentId}-${idx}`} className="p-8 space-y-6 bg-white hover:bg-blue-50 transition-all">
+                    <div className="flex items-center gap-4">
+                      <img src={student?.photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${res.studentId}`} className="w-16 h-16 rounded-2xl border-4 border-black bg-gray-100" alt="" />
+                      <div>
+                        <p className="text-2xl font-black italic leading-none">{student?.name || 'UNKNOWN'}</p>
+                        <p className="text-[8px] text-gray-400 uppercase mt-1">{student?.email || res.studentId}</p>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 p-6 rounded-3xl border-4 border-black space-y-4">
+                      <div>
+                        <p className="text-[8px] font-black uppercase text-gray-400">Exam Module</p>
+                        <p className="font-black italic">{exam?.title || res.examId}</p>
+                        <p className="text-[8px] text-blue-600 uppercase font-bold">{exam?.subject || 'GENERAL'}</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 pt-4 border-t-2 border-black/5">
+                        <div className="text-center">
+                          <p className="text-xl font-black text-blue-600">{res.score}</p>
+                          <p className="text-[8px] uppercase font-bold opacity-60">Score</p>
+                        </div>
+                        <div className="text-center border-x-2 border-black/5">
+                          <p className="text-xl font-black">{res.totalPoints}</p>
+                          <p className="text-[8px] uppercase font-bold opacity-60">Total</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xl font-black text-green-600">{Math.round((res.score / res.totalPoints) * 100)}%</p>
+                          <p className="text-[8px] uppercase font-bold opacity-60">Acc.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 italic">
+                      <p>{new Date(res.completedAt).toLocaleDateString()}</p>
+                      <p className="uppercase not-italic font-black text-black">Time: {Math.floor(res.timeSpentSeconds / 60)}m {res.timeSpentSeconds % 60}s</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Language, Question } from "../types";
+import { Language, Question, News, Exam, Grade } from "../types";
 import * as mammoth from "mammoth";
 
 const LANGUAGE_NAMES = {
@@ -150,27 +150,45 @@ export const getRegionalIntelligence = async (region: string) => {
   }
 };
 
-export const fetchLatestEducationNews = async () => {
+export const fetchLatestEducationNews = async (): Promise<News[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '' });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: "What are the latest news updates from the Ethiopian Ministry of Education (MoE) regarding national exams and TVET for 2025?",
-      config: { tools: [{ googleSearch: {} }] }
+      contents: "What are the latest news updates from the Ethiopian Ministry of Education (MoE) regarding national exams and TVET for 2025? Provide at least 3 news items.",
+      config: { 
+        tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              date: { type: Type.STRING },
+              tag: { type: Type.STRING },
+              title: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              content: { type: Type.STRING },
+              image: { type: Type.STRING }
+            },
+            required: ["id", "date", "tag", "title", "summary", "content", "image"]
+          }
+        }
+      }
     });
-    return {
-      text: response.text,
-      sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
-        title: chunk.web?.title || "Official Update",
-        uri: chunk.web?.uri || "#"
-      })) || []
-    };
-  } catch (error) { return null; }
+    return JSON.parse(response.text || "[]");
+  } catch (error) { 
+    console.error("News Fetch Error:", error);
+    return []; 
+  }
 };
 
 export const getLessonDeepDive = async (text: string, type: 'simpler' | 'advanced', language: Language = 'en') => {
   const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '' });
-  const prompt = type === 'simpler' ? `Simpler explanation of: ${text}` : `Advanced technical context for: ${text}`;
+  const prompt = type === 'simpler' 
+    ? `Explain the following lesson content in very simple terms, using analogies that a child could understand. Focus on the core concept and avoid technical jargon. Content: ${text}` 
+    : `Provide an advanced technical deep dive into the following lesson content. Include historical context, advanced theoretical implications, and real-world industrial applications. Content: ${text}`;
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -275,6 +293,58 @@ export const generateExamQuestions = async (
   }
 };
 
+export const generateQuizFromLessonContent = async (
+  content: string,
+  count: number = 5
+): Promise<Partial<Question>[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '' });
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-pro-preview',
+      contents: `Generate ${count} high-quality educational questions based on the following lesson content:
+      
+      Content: ${content}
+      
+      Strict Rules for Question Types:
+      1. 'multiple-choice': Provide exactly 4 distinct options. 'correctAnswer' MUST be the index (0, 1, 2, or 3) of the correct option.
+      2. 'true-false': Provide exactly 2 options: ["True", "False"]. 'correctAnswer' MUST be 0 for True or 1 for False.
+      
+      Each question must have:
+      - 'text': The question prompt.
+      - 'type': Either 'multiple-choice' or 'true-false'.
+      - 'points': An appropriate integer value (e.g., 5 or 10).
+      - 'category': A specific sub-topic covered in the content.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              text: { type: Type.STRING },
+              type: { type: Type.STRING, description: "One of: multiple-choice, true-false" },
+              options: { type: Type.ARRAY, items: { type: Type.STRING } },
+              correctAnswer: { type: Type.STRING, description: "Index (0-3) as string" },
+              points: { type: Type.INTEGER },
+              category: { type: Type.STRING }
+            },
+            required: ["text", "type", "options", "correctAnswer", "points", "category"]
+          }
+        }
+      }
+    });
+    
+    const parsed = JSON.parse(response.text || "[]");
+    return parsed.map((q: any) => ({
+      ...q,
+      correctAnswer: parseInt(q.correctAnswer) || 0
+    }));
+  } catch (error) { 
+    console.error("Lesson Quiz Generation Error:", error);
+    return []; 
+  }
+};
+
 export const findNearbyColleges = async (lat: number, lng: number, type: 'TVET' | 'High School' = 'TVET') => {
   const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '' });
   try {
@@ -295,6 +365,75 @@ export const findNearbyColleges = async (lat: number, lng: number, type: 'TVET' 
       })) || []
     };
   } catch (error) { return null; }
+};
+
+export const generateExamsForGrades = async (grade: string, subject: string): Promise<Partial<Exam>> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '' });
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-pro-preview',
+      contents: `Search for Ethiopian Grade ${grade} ${subject} textbook Unit 1 content. 
+      1. Generate a high-quality exam with 10 multiple-choice questions based ONLY on Unit 1.
+      2. Extract 5-10 key terms or concepts from Unit 1 with their "individual meaning" (definitions).
+      Return both in the specified JSON format.`,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            courseCode: { type: Type.STRING },
+            keyConcepts: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  term: { type: Type.STRING },
+                  meaning: { type: Type.STRING }
+                },
+                required: ["term", "meaning"]
+              }
+            },
+            questions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  text: { type: Type.STRING },
+                  type: { type: Type.STRING, description: "Must be 'multiple-choice'" },
+                  options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  correctAnswer: { type: Type.INTEGER },
+                  points: { type: Type.INTEGER },
+                  category: { type: Type.STRING }
+                },
+                required: ["text", "type", "options", "correctAnswer", "points", "category"]
+              }
+            }
+          },
+          required: ["title", "courseCode", "questions", "keyConcepts"]
+        }
+      }
+    });
+    
+    const parsed = JSON.parse(response.text || "{}");
+    return {
+      ...parsed,
+      grade: grade as Grade,
+      subject: subject,
+      status: 'published',
+      totalPoints: parsed.questions?.reduce((acc: number, q: any) => acc + q.points, 0) || 0,
+      durationMinutes: 30,
+      academicYear: 2025,
+      semester: 1,
+      type: 'National',
+      description: `Unit 1 Mastery Exam. Key Concepts: ${parsed.keyConcepts?.map((c: any) => c.term).join(', ')}`,
+      keyConcepts: parsed.keyConcepts
+    };
+  } catch (error) {
+    console.error(`Exam Generation Error for Grade ${grade} ${subject}:`, error);
+    return {};
+  }
 };
 
 export const getSovereignInsights = async (data: any) => {

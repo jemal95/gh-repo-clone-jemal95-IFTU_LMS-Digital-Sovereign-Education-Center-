@@ -17,16 +17,64 @@ import ProjectReportPortal from './components/ProjectReportPortal';
 import FeedbackWidget from './components/FeedbackWidget';
 import { MOCK_COURSES, MOCK_NEWS, MOCK_EXAMS, SUMMER_STATS, SUMMER_ACTIVITIES } from './constants';
 import { Course, Grade, User, Exam, ExamResult, EducationLevel, Stream, Language, News, Assignment, AssignmentSubmission } from './types';
-import { fetchLatestEducationNews } from './services/geminiService';
+import { fetchLatestEducationNews, generateExamsForGrades } from './services/geminiService';
 import { auth } from './firebase';
 import { AssignmentPortal } from './components/AssignmentPortal';
 import { StudyHall } from './components/StudyHall';
 import { dbService } from './services/dbService';
 
 const TRANSLATIONS: Record<Language, Record<string, string>> = {
-  en: { home: 'Home', courses: 'Courses', exams: 'Exams', assignments: 'Assignments', studyhall: 'Study Hall', tutor: 'AI Tutor', about: 'About', news: 'News', locator: 'Locator', login: 'Login', leaderboard: 'Rankings', performance: 'My Results', documentation: 'Guide', report: 'Project Report' },
-  am: { home: 'መነሻ', courses: 'ትምህርቶች', exams: 'ፈተናዎች', assignments: 'ተግባራት', studyhall: 'የጥናት አዳራሽ', tutor: 'AI ረዳት', about: 'ስለ እኛ', news: 'ዜና', locator: 'መፈለጊያ', login: 'ይግቡ', leaderboard: 'ደረጃዎች', performance: 'ውጤቴ', documentation: 'መመሪያ', report: 'የፕሮጀክት ሪፖርት' },
-  om: { home: 'Mana', courses: 'Koorsoota', exams: 'Qormaata', assignments: 'Hojiiwwan', studyhall: 'Mana Qo’annoo', tutor: 'Gargaaraa AI', about: "Waa'ee", news: 'Oduu', locator: 'Bakka', login: 'Seeni', leaderboard: 'Sadarkaa', performance: 'Bu’aa koo', documentation: 'Qajeelfama', report: 'Gabaasa Piroojektii' }
+  en: { 
+    home: 'Home', 
+    courses: 'Courses', 
+    news: 'News', 
+    mediahub: 'Media Hub', 
+    about: 'About', 
+    locator: 'Locator', 
+    guide: 'Guide', 
+    projectreport: 'Project Report',
+    exams: 'Exams', 
+    assignments: 'Assignments', 
+    studyhall: 'Study Hall', 
+    tutor: 'AI Tutor', 
+    login: 'Login', 
+    leaderboard: 'Rankings', 
+    performance: 'My Results'
+  },
+  am: { 
+    home: 'መነሻ', 
+    courses: 'ትምህርቶች', 
+    news: 'ዜና', 
+    mediahub: 'ሚዲያ', 
+    about: 'ስለ እኛ', 
+    locator: 'መፈለጊያ', 
+    guide: 'መመሪያ', 
+    projectreport: 'የፕሮጀክት ሪፖርት',
+    exams: 'ፈተናዎች', 
+    assignments: 'ተግባራት', 
+    studyhall: 'የጥናት አዳራሽ', 
+    tutor: 'AI ረዳት', 
+    login: 'ይግቡ', 
+    leaderboard: 'ደረጃዎች', 
+    performance: 'ውጤቴ'
+  },
+  om: { 
+    home: 'Mana', 
+    courses: 'Koorsoota', 
+    news: 'Oduu', 
+    mediahub: 'Media Hub', 
+    about: "Waa'ee", 
+    locator: 'Bakka', 
+    guide: 'Qajeelfama', 
+    projectreport: 'Gabaasa Piroojektii',
+    exams: 'Qormaata', 
+    assignments: 'Hojiiwwan', 
+    studyhall: 'Mana Qo’annoo', 
+    tutor: 'Gargaaraa AI', 
+    login: 'Seeni', 
+    leaderboard: 'Sadarkaa', 
+    performance: 'Bu’aa koo'
+  }
 };
 
 const INITIAL_USERS: User[] = [
@@ -41,7 +89,7 @@ const INITIAL_USERS: User[] = [
     preferredLanguage: 'om', 
     badges: [{ id: 'b1', title: 'Grand Architect', icon: '👑', earnedAt: '2024-01-01' }],
     school: 'IFTU National Digital Center', 
-    photo: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jemal&backgroundColor=b6e3f4',
+    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1000&auto=format&fit=crop',
     completedLessons: [], completedExams: [], completedCourses: [], certificatesPaid: [],
     nid: 'ET-ADMIN-001', gender: 'Male', dob: '1975-04-12', phoneNumber: '+251 911 000000', address: 'IFTU HQ, Menelik II Square'
   },
@@ -152,17 +200,129 @@ const App: React.FC = () => {
   const [viewingCourse, setViewingCourse] = useState<Course | null>(null);
   const [groundedNews, setGroundedNews] = useState<{ text: string, sources: any[] } | null>(null);
   const [isSyncingNews, setIsSyncingNews] = useState(false);
+  const [isGeneratingExams, setIsGeneratingExams] = useState(false);
+  const [examGenProgress, setExamGenProgress] = useState('');
   const [allExamResults, setAllExamResults] = useState<ExamResult[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
   const [courseSearch, setCourseSearch] = useState('');
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ courses: Course[], news: News[], exams: Exam[] }>({ courses: [], news: [], exams: [] });
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [streamFilter, setStreamFilter] = useState<string>('all');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
   const [dbError, setDbError] = useState<string | null>(null);
 
+  const handleGlobalSearch = (query: string) => {
+    setGlobalSearchQuery(query);
+    const lowerQuery = query.toLowerCase();
+    
+    const filteredCourses = courses.filter(c => 
+      c.title.toLowerCase().includes(lowerQuery) || 
+      c.description.toLowerCase().includes(lowerQuery) ||
+      c.code.toLowerCase().includes(lowerQuery)
+    );
+
+    const filteredNews = news.filter(n => 
+      n.title.toLowerCase().includes(lowerQuery) || 
+      n.content.toLowerCase().includes(lowerQuery) ||
+      n.tag.toLowerCase().includes(lowerQuery)
+    );
+
+    const filteredExams = exams.filter(e => 
+      e.title.toLowerCase().includes(lowerQuery) || 
+      e.description?.toLowerCase().includes(lowerQuery) ||
+      e.subject?.toLowerCase().includes(lowerQuery)
+    );
+
+    setSearchResults({ courses: filteredCourses, news: filteredNews, exams: filteredExams });
+    setActiveView('search');
+  };
+
+  const handleSyncNews = async () => {
+    if (!isOnline) return;
+    setIsSyncingNews(true);
+    try {
+      const latestNews = await fetchLatestEducationNews();
+      if (latestNews && latestNews.length > 0) {
+        // Update local state
+        setNews(prev => {
+          const existingIds = new Set(prev.map(n => n.id));
+          const newItems = latestNews.filter(n => !existingIds.has(n.id));
+          return [...newItems, ...prev];
+        });
+        // Sync to Firestore
+        for (const item of latestNews) {
+          await dbService.addNews(item);
+        }
+      }
+    } catch (error) {
+      console.error("Sync News Error:", error);
+    } finally {
+      setIsSyncingNews(false);
+    }
+  };
+
+  const handleGenerateNationalExams = async () => {
+    if (!isOnline) return;
+    setIsGeneratingExams(true);
+    const grades: Grade[] = [Grade.G9, Grade.G10, Grade.G11, Grade.G12];
+    const subjects = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Geography', 'History', 'Economics', 'Civics'];
+    
+    try {
+      for (const grade of grades) {
+        for (const subject of subjects) {
+          setExamGenProgress(`Generating ${subject} for Grade ${grade}...`);
+          const examData = await generateExamsForGrades(grade, subject);
+          
+          if (examData && examData.questions && examData.questions.length > 0) {
+            const newExam: Exam = {
+              id: `nat-${grade}-${subject.toLowerCase()}-${Date.now()}`,
+              title: examData.title || `${subject} - Grade ${grade} (Unit 1)`,
+              courseCode: examData.courseCode || `${subject.substring(0,3).toUpperCase()}-${grade}`,
+              grade: grade,
+              stream: (grade === Grade.G11 || grade === Grade.G12) 
+                ? (['Geography', 'History', 'Economics', 'Civics'].includes(subject) ? Stream.SOCIAL_SCIENCE : Stream.NATURAL_SCIENCE)
+                : Stream.GENERAL,
+              academicYear: 2025,
+              durationMinutes: 30,
+              questions: examData.questions.map((q: any, idx: number) => ({
+                ...q,
+                id: `q-${idx}-${Date.now()}`
+              })),
+              totalPoints: examData.totalPoints || 100,
+              status: 'published',
+              type: 'National',
+              semester: 1,
+              subject: subject,
+              description: examData.description,
+              keyConcepts: examData.keyConcepts
+            };
+            
+            setExams(prev => [...prev, newExam]);
+            await dbService.addExam(newExam);
+          }
+        }
+      }
+      setExamGenProgress('All National Exams Generated Successfully!');
+    } catch (error) {
+      console.error("Exam Generation Error:", error);
+      setExamGenProgress('Error generating exams.');
+    } finally {
+      setTimeout(() => {
+        setIsGeneratingExams(false);
+        setExamGenProgress('');
+      }, 3000);
+    }
+  };
+
   useEffect(() => {
     if (!isLoggedIn || !auth.currentUser) return;
+
+    // Auto-sync news if empty
+    if (news.length === 0) {
+      handleSyncNews();
+    }
 
     const handleError = (err: any) => {
       setDbError(err.message || "Database connection error");
@@ -216,7 +376,7 @@ const App: React.FC = () => {
       unsubAssignments();
       unsubSubmissions();
     };
-  }, [isLoggedIn, currentUser?.id]);
+  }, [isLoggedIn, currentUser?.id, isOnline]);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (authUser) => {
@@ -228,7 +388,7 @@ const App: React.FC = () => {
           
           if (!profile) {
             // Check if this is the admin email
-            const isDefaultAdmin = authUser.email === 'jemalfano030@gmail.com';
+            const isDefaultAdmin = authUser.email === 'jemalfano030@gmail.com' || authUser.email === 'jemalfan030@gmail.com';
             profile = {
               id: authUser.uid,
               name: authUser.displayName || 'New User',
@@ -248,7 +408,7 @@ const App: React.FC = () => {
               dob: '2000-01-01'
             };
             await dbService.syncUser(profile);
-          } else if (authUser.email === 'jemalfano030@gmail.com' && profile.role !== 'admin') {
+          } else if ((authUser.email === 'jemalfano030@gmail.com' || authUser.email === 'jemalfan030@gmail.com') && profile.role !== 'admin') {
             // Force admin role for this specific email if it's not already
             profile.role = 'admin';
             await dbService.syncUser(profile);
@@ -297,10 +457,10 @@ const App: React.FC = () => {
         
         if (!profile) {
           // Create a new user profile if it doesn't exist
-          const isDefaultAdmin = authUser.email === 'jemalfano030@gmail.com';
+          const isDefaultAdmin = authUser.email === 'jemalfano030@gmail.com' || authUser.email === 'jemalfan030@gmail.com';
           profile = {
             id: authUser.id,
-            name: authUser.name || 'New User',
+            name: isDefaultAdmin ? 'Jemal Fano Haji' : (authUser.name || 'New User'),
             role: isDefaultAdmin ? 'admin' : 'student',
             points: 0,
             status: 'active',
@@ -308,7 +468,7 @@ const App: React.FC = () => {
             joinedDate: new Date().toISOString().split('T')[0],
             preferredLanguage: 'en',
             badges: [],
-            photo: authUser.photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.id}&backgroundColor=b6e3f4`,
+            photo: authUser.photo || (isDefaultAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jemal&backgroundColor=b6e3f4' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.id}&backgroundColor=b6e3f4`),
             completedExams: [],
             completedCourses: [],
             certificatesPaid: [],
@@ -326,7 +486,25 @@ const App: React.FC = () => {
         const results = await dbService.fetchResults(profile.id);
         if (results) setUserResults(results as any);
       } else if (error) {
-        setAuthError(error.message || "Google Sign-In failed.");
+        console.error("Google Auth Error:", error);
+        const errorCode = (error as any).code || "";
+        const errorMessage = (error as any).message || "";
+        
+        let message = errorMessage || "Google Sign-In failed.";
+        
+        if (errorCode === 'auth/network-request-failed' || errorMessage.includes('network-request-failed')) {
+          message = "Network error or browser blocking popup. Please ensure your connection is stable and try again.";
+        } else if (errorMessage.includes('projectconfigservice.getprojectconfig-are-blocked')) {
+          message = "The Identity Toolkit API is blocked. Please check your Firebase configuration.";
+        } else if (errorCode === 'auth/unauthorized-domain' || errorMessage.includes('unauthorized-domain')) {
+          message = "This domain is not authorized for Google Sign-In. Please check your Firebase settings.";
+        } else if (errorCode === 'auth/popup-closed-by-user' || errorMessage.includes('popup-closed-by-user')) {
+          message = "Sign-in popup was closed. Please try again.";
+        } else if (errorCode === 'auth/internal-error' || errorMessage.includes('internal-error')) {
+          message = "Internal authentication error. Please refresh the page.";
+        }
+        
+        setAuthError(message);
       }
     } catch (err) {
       console.error(err);
@@ -416,14 +594,14 @@ const App: React.FC = () => {
     if (activeView === 'login') return (
       <div className="max-w-4xl mx-auto py-24 px-4">
         <div className="bg-white p-12 md:p-24 rounded-[4rem] border-8 border-black shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] space-y-16 text-center">
-          <h2 className="text-6xl md:text-9xl font-black uppercase italic tracking-tighter leading-none">
+          <h2 className="text-4xl md:text-7xl font-black uppercase italic tracking-tighter leading-none">
             ENTER <span className="bg-gradient-to-r from-yellow-400 via-red-500 to-green-500 bg-clip-text text-transparent">PORTAL.</span>
           </h2>
           
           <div className="space-y-8 max-w-md mx-auto">
             {authError && (
-              <div className="p-6 bg-red-100 border-4 border-red-600 text-red-600 rounded-[2rem] font-black uppercase text-sm animate-bounce">
-                ⚠️ {authError}
+              <div className="p-6 bg-red-50 border-4 border-red-600 text-red-600 rounded-2xl font-bold text-xs">
+                <p>⚠️ {authError}</p>
               </div>
             )}
             <div className="relative">
@@ -508,6 +686,9 @@ const App: React.FC = () => {
             examResults={allExamResults}
             onUpdateUser={async (u) => {
               setUsers(users.map(usr => usr.id === u.id ? u : usr));
+              if (currentUser?.id === u.id) {
+                setCurrentUser(u);
+              }
               await dbService.syncUser(u);
             }} 
             onAddUser={async (u, password) => {
@@ -598,7 +779,7 @@ const App: React.FC = () => {
                 await dbService.createNotification({
                   userId: s.studentId,
                   title: 'Assignment Graded',
-                  message: `Your submission for assignment ID ${s.assignmentId} has been graded. Score: ${s.grade}/${s.points || '?'}`,
+                  message: `Your submission for assignment ID ${s.assignmentId} has been graded. Score: ${s.grade || 0}`,
                   type: 'grade',
                   isRead: false,
                   createdAt: new Date().toISOString()
@@ -681,7 +862,7 @@ const App: React.FC = () => {
                 await dbService.createNotification({
                   userId: s.studentId,
                   title: 'Assignment Graded',
-                  message: `Your submission for assignment ID ${s.assignmentId} has been graded. Score: ${s.grade}/${s.points || '?'}`,
+                  message: `Your submission for assignment ID ${s.assignmentId} has been graded. Score: ${s.grade || 0}`,
                   type: 'grade',
                   isRead: false,
                   createdAt: new Date().toISOString()
@@ -715,7 +896,7 @@ const App: React.FC = () => {
         return (
           <div className="space-y-16 animate-fadeIn">
             <div className="flex flex-col md:flex-row justify-between items-end gap-10">
-              <h2 className="text-9xl font-black uppercase italic tracking-tighter leading-none text-blue-900">Catalogue.</h2>
+              <h2 className="text-7xl font-black uppercase italic tracking-tighter leading-none text-blue-900">Catalogue.</h2>
               <div className="w-full md:w-96">
                 <input 
                   type="text" 
@@ -787,41 +968,169 @@ const App: React.FC = () => {
               </div>
             ) : (
               <div className="py-32 text-center space-y-8">
-                <div className="text-9xl grayscale opacity-20">🔍</div>
+                <div className="text-7xl grayscale opacity-20">🔍</div>
                 <h3 className="text-5xl font-black uppercase italic tracking-tighter text-gray-400">No Modules Cataloged.</h3>
                 <p className="text-xl font-bold text-gray-400 uppercase">Adjust your search or filters to find educational artifacts.</p>
               </div>
             )}
           </div>
         );
+      case 'media':
+        return (
+          <div className="max-w-6xl mx-auto space-y-24 py-12 animate-fadeIn">
+            <div className="text-center space-y-6">
+              <h2 className="text-7xl md:text-9xl font-black uppercase italic tracking-tighter leading-none text-red-600">Media Hub.</h2>
+              <p className="text-2xl font-bold text-gray-500 uppercase italic">Official Video Broadcasting & Educational Content</p>
+            </div>
+
+            <div className="bg-white border-8 border-black rounded-[5rem] p-12 md:p-20 shadow-[30px_30px_0px_0px_rgba(220,38,38,1)] flex flex-col md:flex-row gap-16 items-center">
+              <div className="w-full md:w-1/2 space-y-8">
+                <div className="w-24 h-24 bg-red-600 rounded-3xl border-4 border-black flex items-center justify-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                  <svg viewBox="0 0 24 24" className="w-12 h-12 fill-white" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.377.505 9.377.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                  </svg>
+                </div>
+                <h3 className="text-5xl font-black uppercase italic tracking-tighter leading-none">Soof Umar Media 256</h3>
+                <p className="text-xl font-medium leading-relaxed text-gray-600">
+                  Welcome to the official media wing of IFTU National Digital Center. We provide high-quality educational broadcasts, 
+                  national exam preparation videos, and digital literacy content for students across the nation.
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <a 
+                    href="https://www.youtube.com/@soof-UmarMedia256" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="bg-red-600 text-white px-10 py-6 rounded-[2.5rem] border-8 border-black font-black uppercase text-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all flex items-center gap-4"
+                  >
+                    Visit Channel →
+                  </a>
+                </div>
+              </div>
+              <div className="w-full md:w-1/2 aspect-video bg-black rounded-[3rem] border-8 border-black overflow-hidden shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]">
+                <iframe 
+                  className="w-full h-full"
+                  src="https://www.youtube.com/embed/videoseries?list=UU-soof-UmarMedia256" 
+                  title="Soof Umar Media 256"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                ></iframe>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+              {[
+                { title: 'Educational Series', icon: '📚', count: '150+ Videos' },
+                { title: 'Exam Prep', icon: '📝', count: '45+ Modules' },
+                { title: 'Tech Tutorials', icon: '💻', count: '80+ Guides' }
+              ].map((item, i) => (
+                <div key={i} className="bg-white border-8 border-black rounded-[3rem] p-10 shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center text-center space-y-4">
+                  <div className="text-5xl">{item.icon}</div>
+                  <h4 className="text-2xl font-black uppercase italic">{item.title}</h4>
+                  <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{item.count}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
       case 'news':
         return (
           <div className="max-w-6xl mx-auto space-y-24 py-12 animate-fadeIn">
             <div className="flex flex-col md:flex-row justify-between items-end gap-10">
-              <h2 className="text-9xl font-black uppercase italic tracking-tighter leading-none text-blue-900">Bulletin.</h2>
-              <button onClick={async () => { setIsSyncingNews(true); const d = await fetchLatestEducationNews(); if (d) setGroundedNews(d); setIsSyncingNews(false); }} disabled={isSyncingNews || !isOnline} className="bg-[#00D05A] text-white px-10 py-6 rounded-[2.5rem] border-8 border-black font-black uppercase text-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all flex items-center gap-4">
-                {isSyncingNews ? 'SYNCING...' : '📡 Sync National Feed'}
-              </button>
+              <div className="space-y-4">
+                <h2 className="text-7xl font-black uppercase italic tracking-tighter leading-none text-blue-900">Bulletin.</h2>
+                <p className="text-xl font-bold text-gray-500 uppercase italic">Official National Education Feed</p>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                <button 
+                  onClick={handleSyncNews} 
+                  disabled={isSyncingNews || !isOnline} 
+                  className="bg-[#00D05A] text-white px-10 py-6 rounded-[2.5rem] border-8 border-black font-black uppercase text-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all flex items-center gap-4 disabled:opacity-50"
+                >
+                  {isSyncingNews ? 'SYNCING...' : '📡 Sync National Feed'}
+                </button>
+                {currentUser?.role === 'admin' && (
+                  <button 
+                    onClick={handleGenerateNationalExams} 
+                    disabled={isGeneratingExams || !isOnline} 
+                    className="bg-purple-500 text-white px-10 py-6 rounded-[2.5rem] border-8 border-black font-black uppercase text-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all flex items-center gap-4 disabled:opacity-50"
+                  >
+                    {isGeneratingExams ? 'GENERATING...' : '📝 Generate National Exams'}
+                  </button>
+                )}
+              </div>
             </div>
-            {groundedNews && (
-               <div className="bg-blue-50 border-8 border-black rounded-[5rem] p-12 md:p-20 space-y-10 shadow-[30px_30px_0px_0px_rgba(59,130,246,1)]">
-                 <p className="text-sm font-black uppercase tracking-widest text-red-600 italic">Live Grounded Update</p>
-                 <div className="prose prose-2xl max-w-none font-bold text-gray-800 italic whitespace-pre-wrap">{groundedNews.text}</div>
-               </div>
+
+            {examGenProgress && (
+              <div className="bg-purple-100 border-8 border-black rounded-[3rem] p-8 text-center animate-pulse">
+                <p className="text-2xl font-black uppercase italic">{examGenProgress}</p>
+              </div>
             )}
-            <div className="grid grid-cols-1 gap-16">
-              {news.map(n => (
-                <div key={n.id} className="bg-white border-8 border-black rounded-[5rem] overflow-hidden shadow-[30px_30px_0px_0px_rgba(0,0,0,1)] flex flex-col lg:flex-row">
-                  <div className="w-full lg:w-[450px] h-96 border-b-8 lg:border-b-0 lg:border-r-8 border-black shrink-0">
-                    <img src={n.image} className="w-full h-full object-cover" alt="" />
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
+              <div className="lg:col-span-2 space-y-16">
+                <h3 className="text-4xl font-black uppercase italic tracking-tighter text-blue-900">Latest Updates.</h3>
+                {news.length > 0 ? news.map(n => (
+                  <div key={n.id} className="bg-white border-8 border-black rounded-[5rem] overflow-hidden shadow-[30px_30px_0px_0px_rgba(0,0,0,1)] flex flex-col hover:translate-y-[-10px] transition-all">
+                    {n.image && (
+                      <div className="w-full h-80 border-b-8 border-black shrink-0">
+                        <img src={n.image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                      </div>
+                    )}
+                    <div className="p-12 space-y-6">
+                      <div className="flex justify-between items-start">
+                        <span className="px-6 py-2 bg-red-600 text-white font-black uppercase italic rounded-full border-4 border-black text-sm">{n.tag}</span>
+                        <span className="text-xl font-bold text-gray-400 italic">{n.date}</span>
+                      </div>
+                      <h3 className="text-3xl md:text-4xl font-black uppercase italic tracking-tighter leading-none">{n.title}</h3>
+                      <div className="h-2 w-24 bg-black"></div>
+                      <p className="text-lg leading-relaxed text-gray-700 whitespace-pre-wrap font-medium">{n.content}</p>
+                      {n.tag && (
+                        <div className="flex flex-wrap gap-2 pt-4">
+                          <span className="text-xs font-black uppercase text-blue-600">#{n.tag}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="p-12 md:p-20 space-y-8">
-                    <h3 className="text-5xl md:text-7xl font-black uppercase italic tracking-tighter leading-none">{n.title}</h3>
-                    <p className="text-2xl font-bold text-gray-500 italic leading-relaxed">{n.summary}</p>
-                    <p className="text-lg leading-relaxed text-gray-700 whitespace-pre-wrap">{n.content}</p>
+                )) : (
+                  <div className="py-32 text-center space-y-8 bg-gray-50 border-8 border-dashed border-gray-300 rounded-[5rem]">
+                    <div className="text-7xl grayscale opacity-20">📡</div>
+                    <h3 className="text-4xl font-black uppercase italic text-gray-400">No News Synchronized.</h3>
+                    <p className="text-xl font-bold text-gray-400 uppercase">Click sync to fetch latest national updates.</p>
                   </div>
+                )}
+              </div>
+
+              <div className="space-y-16">
+                <h3 className="text-4xl font-black uppercase italic tracking-tighter text-purple-900">National Exams.</h3>
+                <div className="space-y-8">
+                  {exams.filter(ex => ex.type === 'National').slice(0, 5).map(ex => (
+                    <div key={ex.id} className="bg-purple-50 border-8 border-black rounded-[3rem] p-8 space-y-4 shadow-[15px_15px_0px_0px_rgba(168,85,247,1)] hover:translate-x-2 transition-all cursor-pointer" onClick={() => { setActiveExam(ex); setActiveView('exams'); }}>
+                      <div className="flex justify-between items-center">
+                        <span className="px-4 py-1 bg-purple-600 text-white font-black uppercase italic rounded-full border-2 border-black text-[10px]">{ex.grade}</span>
+                        <span className="text-xs font-black uppercase text-purple-900">{ex.subject}</span>
+                      </div>
+                      <h4 className="text-xl font-black uppercase italic leading-none">{ex.title}</h4>
+                      {ex.description && (
+                        <p className="text-xs font-bold text-purple-700 italic line-clamp-2">{ex.description}</p>
+                      )}
+                      <div className="flex justify-between items-center pt-4 border-t-4 border-black/10">
+                        <span className="text-[10px] font-black uppercase">{ex.questions.length} Questions</span>
+                        <span className="text-[10px] font-black uppercase text-blue-600">Start Now →</span>
+                      </div>
+                    </div>
+                  ))}
+                  {exams.filter(ex => ex.type === 'National').length === 0 && (
+                    <div className="p-12 text-center bg-purple-50 border-8 border-dashed border-purple-200 rounded-[3rem] space-y-4">
+                      <div className="text-4xl grayscale opacity-20">📝</div>
+                      <p className="text-sm font-black uppercase text-purple-400">No National Exams Generated Yet.</p>
+                    </div>
+                  )}
+                  <button onClick={() => setActiveView('exams')} className="w-full py-6 bg-black text-white rounded-[2rem] font-black uppercase italic text-xl hover:bg-purple-600 transition-colors">
+                    View All Exams
+                  </button>
                 </div>
-              ))}
+              </div>
             </div>
           </div>
         );
@@ -832,23 +1141,37 @@ const App: React.FC = () => {
         });
         return (
           <div className="max-w-4xl mx-auto space-y-16 py-12 animate-fadeIn">
-            <h2 className="text-8xl font-black uppercase italic tracking-tighter text-blue-900 leading-none">Mock Sessions.</h2>
+            <h2 className="text-6xl font-black uppercase italic tracking-tighter text-blue-900 leading-none">Mock Sessions.</h2>
             <div className="grid grid-cols-1 gap-8">
               {filteredExams.map(ex => (
                 <div key={ex.id} className="bg-white p-10 md:p-12 rounded-[3.5rem] border-8 border-black shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row justify-between items-center gap-8 hover:translate-x-2 transition-all">
-                  <div className="space-y-2">
-                    <h3 className="text-3xl md:text-4xl font-black uppercase italic leading-none tracking-tight">{ex.title}</h3>
+                  <div className="space-y-4 flex-1">
                     <div className="flex gap-4">
                       <span className="text-[10px] font-black uppercase bg-blue-100 text-blue-600 px-3 py-1 rounded-full border-2 border-black">{ex.grade}</span>
                       <span className="text-[10px] font-black uppercase bg-orange-100 text-orange-600 px-3 py-1 rounded-full border-2 border-black">{ex.stream}</span>
+                      <span className="text-[10px] font-black uppercase bg-purple-100 text-purple-600 px-3 py-1 rounded-full border-2 border-black">{ex.type}</span>
                     </div>
+                    <h3 className="text-3xl md:text-4xl font-black uppercase italic leading-none tracking-tight">{ex.title}</h3>
+                    {ex.description && (
+                      <p className="text-lg font-bold text-gray-400 italic leading-tight">{ex.description}</p>
+                    )}
+                    {ex.keyConcepts && ex.keyConcepts.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {ex.keyConcepts.slice(0, 3).map((c, i) => (
+                          <span key={i} className="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                            {c.term}
+                          </span>
+                        ))}
+                        {ex.keyConcepts.length > 3 && <span className="text-[10px] font-bold text-gray-400">+{ex.keyConcepts.length - 3} more</span>}
+                      </div>
+                    )}
                   </div>
-                  <button onClick={() => isLoggedIn ? setActiveExam(ex) : setActiveView('login')} className="px-12 py-5 bg-black text-white rounded-2xl border-4 border-black font-black uppercase text-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 shrink-0">Launch</button>
+                  <button onClick={() => isLoggedIn ? setActiveExam(ex) : setActiveView('login')} className="px-12 py-8 bg-blue-600 text-white border-8 border-black rounded-[2.5rem] font-black uppercase text-2xl shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all shrink-0">Launch</button>
                 </div>
               ))}
               {filteredExams.length === 0 && (
                 <div className="py-20 text-center space-y-6">
-                  <div className="text-8xl grayscale opacity-20">📝</div>
+                  <div className="text-6xl grayscale opacity-20">📝</div>
                   <h3 className="text-4xl font-black uppercase italic text-gray-400">No Exams for your profile.</h3>
                 </div>
               )}
@@ -870,34 +1193,154 @@ const App: React.FC = () => {
       case 'locator':
         return <CampusLocator />;
       case 'about':
-        return <AboutPortal />;
+        return <AboutPortal currentUser={currentUser} />;
       case 'documentation':
         return <DevPortal />;
       case 'report':
         return <ProjectReportPortal />;
+      case 'search':
+        return (
+          <div className="max-w-6xl mx-auto space-y-16 py-12 animate-fadeIn">
+            <div className="flex items-center gap-6 border-b-8 border-black pb-8">
+              <div className="w-20 h-20 bg-yellow-400 border-8 border-black rounded-[2rem] flex items-center justify-center text-4xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">🔍</div>
+              <div>
+                <h2 className="text-6xl font-black uppercase italic tracking-tighter leading-none">Search Results.</h2>
+                <p className="text-[10px] font-black uppercase text-gray-400 mt-2 tracking-widest">Query: "{globalSearchQuery}"</p>
+              </div>
+            </div>
+
+            {searchResults.courses.length === 0 && searchResults.news.length === 0 && searchResults.exams.length === 0 ? (
+              <div className="bg-white p-24 rounded-[4rem] border-8 border-black text-center shadow-[20px_20px_0px_0px_rgba(0,0,0,1)]">
+                <p className="text-4xl font-black uppercase italic text-gray-400">No results found for your query.</p>
+                <button onClick={() => setActiveView('home')} className="mt-8 px-12 py-4 bg-black text-white rounded-2xl border-4 border-black font-black uppercase text-sm shadow-[8px_8px_0px_0px_rgba(59,130,246,1)] hover:translate-y-1 transition-all">Return Home</button>
+              </div>
+            ) : (
+              <div className="space-y-24">
+                {searchResults.courses.length > 0 && (
+                  <div className="space-y-8">
+                    <h3 className="text-3xl font-black uppercase italic border-l-8 border-blue-600 pl-6">Courses ({searchResults.courses.length})</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                      {searchResults.courses.map(course => (
+                        <CourseCard 
+                          key={course.id} 
+                          course={course} 
+                          onClick={() => setViewingCourse(course)} 
+                          language={currentLang}
+                          isEnrolled={currentUser?.completedCourses.includes(course.id)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {searchResults.news.length > 0 && (
+                  <div className="space-y-8">
+                    <h3 className="text-3xl font-black uppercase italic border-l-8 border-red-600 pl-6">Bulletins ({searchResults.news.length})</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {searchResults.news.map(n => (
+                        <div key={n.id} className="bg-white border-8 border-black rounded-[3rem] overflow-hidden shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] flex flex-col hover:translate-y-[-4px] transition-all cursor-pointer" onClick={() => setActiveView('news')}>
+                          <div className="h-32 border-b-4 border-black">
+                            <img src={n.image} className="w-full h-full object-cover" alt="" />
+                          </div>
+                          <div className="p-6 space-y-2">
+                            <h4 className="text-xl font-black uppercase italic leading-none">{n.title}</h4>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">{n.date}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {searchResults.exams.length > 0 && (
+                  <div className="space-y-8">
+                    <h3 className="text-3xl font-black uppercase italic border-l-8 border-yellow-400 pl-6">Exams ({searchResults.exams.length})</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                      {searchResults.exams.map(exam => (
+                        <div key={exam.id} className="bg-white border-8 border-black rounded-[3rem] p-8 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-4px] transition-all cursor-pointer" onClick={() => { setActiveExam(exam); setActiveView('exams'); }}>
+                          <div className="flex justify-between items-start mb-4">
+                            <span className="px-3 py-1 bg-yellow-100 text-yellow-700 border-2 border-black rounded-full text-[8px] font-black uppercase">{exam.type}</span>
+                            <span className="text-[8px] font-black text-gray-400 uppercase">Grade {exam.grade}</span>
+                          </div>
+                          <h4 className="text-xl font-black uppercase italic leading-tight mb-2">{exam.title}</h4>
+                          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{exam.subject}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
       default:
         return (
           <div className="space-y-24 animate-fadeIn">
-            <section className="rounded-[4rem] p-12 md:p-32 text-white bg-gradient-to-br from-[#ef3340] to-black border-8 border-black shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden flex flex-col items-center text-center">
+            <section className="rounded-[4rem] p-12 md:p-32 text-black bg-blue-100 border-8 border-black shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden flex flex-col items-center text-center">
               <div className="relative z-10 max-w-6xl space-y-12">
                 <div className="space-y-4">
                   {isLoggedIn && (
-                    <div className="bg-white/20 backdrop-blur-md px-8 py-3 rounded-full border-2 border-white/30 inline-block mb-8">
-                      <p className="text-sm font-black uppercase tracking-[0.3em]">Welcome back, {currentUser?.name}</p>
+                    <div className="bg-blue-600/10 backdrop-blur-md px-8 py-3 rounded-full border-2 border-blue-600/20 inline-block mb-8">
+                      <p className="text-sm font-black uppercase tracking-[0.3em] text-blue-800">Welcome back, {currentUser?.name}</p>
                     </div>
                   )}
                   <h1 className="text-6xl md:text-[12rem] font-black uppercase tracking-tighter leading-[0.8] italic">
-                    SOVEREIGN <br/> LEARNING
+                    <span className="text-[#009b44] block">SOVEREIGN</span>
+                    <span className="text-[#ffcd00] block text-4xl md:text-8xl my-4">⚡</span>
+                    <span className="text-[#ef3340] block">LEARNING</span>
                   </h1>
+                  {news.length > 0 && (
+                    <div className="mt-8 animate-pulse">
+                      <button 
+                        onClick={() => setActiveView('news')}
+                        className="bg-red-600 text-white px-6 py-2 rounded-full border-4 border-black font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all"
+                      >
+                        LATEST BULLETIN: {news[0].title} →
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <p className="text-xl md:text-3xl font-black uppercase tracking-widest italic opacity-90">Empowering Ethiopia's Digital Generation.</p>
+                <p className="text-xl md:text-3xl font-black uppercase tracking-widest italic text-[#ffcd00] drop-shadow-[2px_2px_0px_rgba(0,0,0,1)]">Empowering Ethiopia's Digital Generation.</p>
+                <p className="text-lg md:text-xl font-black uppercase tracking-widest text-black/40 mt-4 animate-bounce">Developer JEMAL FANO HAJI</p>
                 {!isLoggedIn && (
                   <div className="flex flex-col sm:flex-row gap-8 justify-center pt-8">
-                    <button onClick={() => setActiveView('login')} className="bg-black text-white px-12 py-6 rounded-[2.5rem] border-8 border-black font-black uppercase text-xl shadow-[15px_15px_0px_0px_rgba(0,208,90,1)] hover:scale-105 transition-all">ACCESS PORTAL</button>
+                    <button onClick={() => setActiveView('login')} className="bg-black text-white px-12 py-6 rounded-[2.5rem] border-8 border-black font-black uppercase text-xl shadow-[15px_15px_0px_0px_rgba(59,130,246,1)] hover:scale-105 transition-all">ACCESS PORTAL</button>
                   </div>
                 )}
               </div>
             </section>
+
+            {/* News & Announcements Section (Beeksisa) */}
+            <div className="max-w-6xl mx-auto space-y-12">
+              <div className="flex items-center justify-between border-b-8 border-black pb-6">
+                <div className="flex items-center gap-6">
+                  <div className="w-20 h-20 bg-red-600 border-8 border-black rounded-[2rem] flex items-center justify-center text-4xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">📢</div>
+                  <div>
+                    <h2 className="text-6xl font-black uppercase italic tracking-tighter leading-none">Bulletins.</h2>
+                    <p className="text-[10px] font-black uppercase text-gray-400 mt-2 tracking-widest">Latest Announcements & Beeksisa</p>
+                  </div>
+                </div>
+                <button onClick={() => setActiveView('news')} className="text-sm font-black uppercase italic border-b-4 border-black hover:text-red-600 transition-colors">View All →</button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                {news.slice(0, 2).map(n => (
+                  <div key={n.id} className="bg-white border-8 border-black rounded-[4rem] overflow-hidden shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] flex flex-col hover:translate-y-[-8px] transition-all cursor-pointer" onClick={() => setActiveView('news')}>
+                    <div className="h-48 border-b-8 border-black">
+                      <img src={n.image} className="w-full h-full object-cover" alt="" />
+                    </div>
+                    <div className="p-8 space-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="px-4 py-1 bg-red-100 text-red-600 border-2 border-black rounded-full text-[10px] font-black uppercase tracking-widest">{n.tag}</span>
+                        <span className="text-[10px] font-black text-gray-400 uppercase">{n.date}</span>
+                      </div>
+                      <h3 className="text-3xl font-black uppercase italic leading-none tracking-tight">{n.title}</h3>
+                      <p className="text-sm font-bold text-gray-500 italic line-clamp-2">{n.summary}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {isLoggedIn && currentUser?.role === 'student' && (
               <div className="max-w-6xl mx-auto space-y-12 animate-fadeIn">
@@ -1009,7 +1452,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#fdfdfd]">
+    <div className="min-h-screen flex flex-col bg-blue-50 text-black">
       {activeExam && (
         <ExamEngine 
           exam={activeExam} 
@@ -1042,7 +1485,21 @@ const App: React.FC = () => {
       )}
       {!activeExam && !viewingCourse && (
         <>
-          <Header onNavClick={setActiveView} activeView={activeView} isLoggedIn={isLoggedIn} userRole={currentUser?.role} onLogout={async () => { await auth.signOut(); setIsLoggedIn(false); setCurrentUser(null); setActiveView('home'); }} onLoginClick={() => setActiveView('login')} currentLang={currentLang} onLangChange={setCurrentLang} t={t} accessibilitySettings={{}} onAccessibilityChange={() => {}} isOnline={isOnline} />
+          <Header 
+            onNavClick={setActiveView} 
+            activeView={activeView} 
+            isLoggedIn={isLoggedIn} 
+            userRole={currentUser?.role} 
+            onLogout={async () => { await auth.signOut(); setIsLoggedIn(false); setCurrentUser(null); setActiveView('home'); }} 
+            onLoginClick={() => setActiveView('login')} 
+            currentLang={currentLang} 
+            onLangChange={setCurrentLang} 
+            t={t} 
+            accessibilitySettings={{}} 
+            onAccessibilityChange={() => {}} 
+            isOnline={isOnline} 
+            onSearch={handleGlobalSearch}
+          />
           {dbError && (
             <div className="bg-red-500 text-white p-4 text-center font-black uppercase text-xs animate-pulse">
               ⚠️ {dbError} <button onClick={() => window.location.reload()} className="underline ml-4">Retry</button>
@@ -1050,20 +1507,33 @@ const App: React.FC = () => {
           )}
           <main className="flex-grow w-full max-w-screen-2xl mx-auto px-4 py-16">{renderContent()}</main>
           <FeedbackWidget />
-          <footer className="bg-black text-white py-24 px-8 mt-20 text-center relative overflow-hidden">
+          <footer className="bg-gray-50 text-black py-24 px-8 mt-20 text-center relative overflow-hidden border-t-8 border-black">
              <div className="absolute top-0 left-0 w-full h-2 ethiopian-gradient"></div>
              <div className="flex flex-col items-center gap-8">
-               <p className="text-[14px] font-black uppercase tracking-[0.6em] text-white/60">© 2026 <span className="liquid-spectrum-text">IFTU NATIONAL DIGITAL CENTER</span>.</p>
+               <p className="text-[14px] font-black uppercase tracking-[0.6em] text-black/60">© 2026 <span className="liquid-spectrum-text">IFTU NATIONAL DIGITAL CENTER</span>.</p>
                <div className="flex flex-wrap justify-center gap-6">
+                 <a 
+                   href="https://www.youtube.com/@soof-UmarMedia256" 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="flex items-center gap-3 px-6 py-3 bg-red-600/5 hover:bg-red-600/10 border-2 border-red-600/20 rounded-full transition-all group"
+                 >
+                   <span className="text-red-600 font-black uppercase text-[10px] tracking-widest">Official YouTube Channel</span>
+                   <div className="w-8 h-8 flex items-center justify-center bg-red-600 rounded-lg">
+                     <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white" xmlns="http://www.w3.org/2000/svg">
+                       <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.377.505 9.377.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                     </svg>
+                   </div>
+                 </a>
                  <a 
                    href="https://github.com/jemalfano030/iftu-portal" 
                    target="_blank" 
                    rel="noopener noreferrer"
-                   className="flex items-center gap-3 px-6 py-3 bg-white/10 hover:bg-white/20 border-2 border-white/20 rounded-full transition-all group"
+                   className="flex items-center gap-3 px-6 py-3 bg-black/5 hover:bg-black/10 border-2 border-black/20 rounded-full transition-all group"
                  >
-                   <span className="text-white/40 group-hover:text-white transition-colors">View Source on GitHub</span>
-                   <div className="w-8 h-8 flex items-center justify-center bg-white rounded-lg">
-                     <svg viewBox="0 0 24 24" className="w-5 h-5 fill-black" xmlns="http://www.w3.org/2000/svg">
+                   <span className="text-black/40 group-hover:text-black transition-colors">View Source on GitHub</span>
+                   <div className="w-8 h-8 flex items-center justify-center bg-black rounded-lg">
+                     <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white" xmlns="http://www.w3.org/2000/svg">
                        <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
                      </svg>
                    </div>
@@ -1072,10 +1542,10 @@ const App: React.FC = () => {
                    href="https://ais-dev-adyv3zaxyzietvbae52va4-107893339879.europe-west2.run.app"
                    target="_blank"
                    rel="noopener noreferrer"
-                   className="flex items-center gap-3 px-6 py-3 bg-green-500/10 border-2 border-green-500/20 rounded-full hover:bg-green-500/20 transition-all group"
+                   className="flex items-center gap-3 px-6 py-3 bg-green-500/5 border-2 border-green-500/20 rounded-full hover:bg-green-500/10 transition-all group"
                  >
                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                   <span className="text-[10px] font-black uppercase tracking-widest text-green-500 group-hover:underline">Live on Cloud Run</span>
+                   <span className="text-[10px] font-black uppercase tracking-widest text-green-600 group-hover:underline">Live on Cloud Run</span>
                  </a>
                </div>
              </div>
@@ -1087,4 +1557,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

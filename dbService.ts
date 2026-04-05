@@ -1,6 +1,6 @@
 
 import { db, auth } from '../firebase';
-import { collection, getDocs, doc, setDoc, deleteDoc, query, where, updateDoc, onSnapshot, Unsubscribe, addDoc, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, deleteDoc, query, where, updateDoc, onSnapshot, Unsubscribe, addDoc, orderBy, limit, getDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { User, ExamResult, Course, Exam, News, Assignment, AssignmentSubmission, AppNotification } from '../types';
 
@@ -386,7 +386,6 @@ export const dbService = {
   async fetchUserProfile(id: string): Promise<User | null> {
     const path = 'users';
     try {
-      const { getDoc } = await import('firebase/firestore');
       const userRef = doc(db, path, id);
       const snapshot = await getDoc(userRef);
       return snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as User) : null;
@@ -582,5 +581,32 @@ export const dbService = {
     }, (error) => {
       console.error("Notification subscription error:", error);
     });
+  },
+
+  async addNews(news: News) {
+    const path = 'news';
+    try {
+      await setDoc(doc(db, path, news.id), news);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  async addExam(exam: Exam) {
+    const path = 'exams';
+    try {
+      await setDoc(doc(db, path, exam.id), exam);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
+  async updateExam(exam: Exam) {
+    const path = 'exams';
+    try {
+      await updateDoc(doc(db, path, exam.id), { ...exam });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
   },
 };

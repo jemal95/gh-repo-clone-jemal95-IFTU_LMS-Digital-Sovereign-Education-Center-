@@ -24,6 +24,7 @@ const PerformancePortal: React.FC<PerformancePortalProps> = ({ results, exams, c
   const [selectedResult, setSelectedResult] = useState<ExamResult | null>(null);
   const [showPayment, setShowPayment] = useState<Course | null>(null);
   const [showCertificate, setShowCertificate] = useState<Course | null>(null);
+  const [showExamCert, setShowExamCert] = useState<ExamResult | null>(null);
   const [learningPath, setLearningPath] = useState<{title: string, suggestion: string, priority: string}[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -87,7 +88,14 @@ const PerformancePortal: React.FC<PerformancePortalProps> = ({ results, exams, c
     }
   };
 
-  if (selectedResult) return <ReportCard result={selectedResult} onClose={() => setSelectedResult(null)} />;
+  if (selectedResult) return (
+    <ReportCard 
+      result={selectedResult} 
+      user={currentUser}
+      onClose={() => setSelectedResult(null)} 
+      onViewCertificate={() => setShowExamCert(selectedResult)}
+    />
+  );
 
   return (
     <div className="max-w-7xl mx-auto space-y-24 animate-fadeIn py-12 px-4 selection:bg-yellow-200">
@@ -98,11 +106,11 @@ const PerformancePortal: React.FC<PerformancePortalProps> = ({ results, exams, c
         <div className="flex flex-col lg:flex-row justify-between items-start gap-16 relative z-10">
           <div className="space-y-10 max-w-2xl">
             <span className="inline-block bg-blue-700 text-white px-10 py-4 rounded-3xl border-4 border-black font-black uppercase text-sm tracking-[0.5em] shadow-xl">National Academic Registry</span>
-            <h2 className="text-7xl md:text-[10rem] font-black uppercase tracking-tighter italic leading-[0.75] text-blue-900">Transcript <br/>Summary.</h2>
+            <h2 className="text-5xl md:text-7xl font-black uppercase tracking-tighter italic leading-[0.75] text-blue-900">Transcript <br/>Summary.</h2>
           </div>
           <div className="flex flex-col items-center bg-gray-50 border-8 border-black p-12 rounded-[4rem] shadow-inner w-full lg:w-auto">
              <div className="text-center">
-                <p className="text-8xl md:text-[12rem] font-black italic tracking-tighter leading-none">{analytics.averageScore}%</p>
+                <p className="text-6xl md:text-8xl font-black italic tracking-tighter leading-none">{analytics.averageScore}%</p>
                 <p className="text-xs font-black uppercase tracking-widest text-blue-600 mt-4">Aggregate Mastery</p>
              </div>
           </div>
@@ -251,6 +259,14 @@ const PerformancePortal: React.FC<PerformancePortalProps> = ({ results, exams, c
           user={currentUser} 
           course={showCertificate} 
           onClose={() => setShowCertificate(null)} 
+        />
+      )}
+
+      {showExamCert && currentUser && (
+        <CertificatePortal 
+          user={currentUser} 
+          examTitle={exams.find(e => e.id === showExamCert.examId)?.title}
+          onClose={() => setShowExamCert(null)} 
         />
       )}
 

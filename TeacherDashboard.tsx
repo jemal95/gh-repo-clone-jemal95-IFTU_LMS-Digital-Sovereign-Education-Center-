@@ -1,10 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Exam, Question, Grade, Stream, QuestionType, Course, Lesson, Difficulty, Assignment, AssignmentSubmission, EducationLevel, ExamType, CourseMaterial } from '../types';
-import { parseExamDocument, generateExamQuestions, parseExamFromDocument } from '../services/geminiService';
+import { parseExamDocument, generateExamQuestions, parseExamFromDocument, generateQuizFromLessonContent } from '../services/geminiService';
 import { validateExam } from '../services/validationService';
 import { dbService } from '../services/dbService';
 import { auth } from '../firebase';
+import { getEthiopianDateString } from '../lib/dateUtils';
 import { NotificationCenter } from './NotificationCenter';
 import { VideoGenerator } from './VideoGenerator';
 
@@ -25,12 +26,12 @@ interface TeacherDashboardProps {
 }
 
 const AssignmentModal = ({ isOpen, onClose, onSave, assignment, courses }: { isOpen: boolean, onClose: () => void, onSave: (assignment: Assignment, file: File | null) => void, assignment: Assignment | null, courses: Course[] }) => {
-  const [formData, setFormData] = useState<Assignment>(assignment || { id: '', title: '', description: '', dueDate: '', points: 0, courseCode: '', rubricUrl: '', status: 'draft' });
+  const [formData, setFormData] = useState<Assignment>(assignment || { id: '', title: '', description: '', dueDate: '', points: 0, courseCode: '', rubricUrl: '', status: 'draft', progressStatus: 'Not Started' });
   const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (assignment) setFormData(assignment);
-    else setFormData({ id: '', title: '', description: '', dueDate: '', points: 0, courseCode: '', rubricUrl: '', status: 'draft' });
+    else setFormData({ id: '', title: '', description: '', dueDate: '', points: 0, courseCode: '', rubricUrl: '', status: 'draft', progressStatus: 'Not Started' });
     setFile(null);
   }, [assignment, isOpen]);
 
@@ -43,28 +44,48 @@ const AssignmentModal = ({ isOpen, onClose, onSave, assignment, courses }: { isO
         <div className="space-y-4">
           <div>
             <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Title</label>
-            <input type="text" placeholder="Assignment Title" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50" />
+            <input type="text" placeholder="Assignment Title" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50" />
           </div>
           <div>
             <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Description</label>
-            <textarea placeholder="Describe the task..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50 h-32" />
+            <textarea placeholder="Describe the task..." value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50 h-32" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Due Date</label>
-              <input type="date" value={formData.dueDate} onChange={e => setFormData({...formData, dueDate: e.target.value})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50" />
+              <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Due Date (Gregorian)</label>
+              <input type="date" value={formData.dueDate || ''} onChange={e => setFormData({...formData, dueDate: e.target.value})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50" />
+              {formData.dueDate && (
+                <p className="text-[10px] font-black text-blue-600 mt-1 uppercase tracking-widest">
+                  Ethiopian: {getEthiopianDateString(formData.dueDate)}
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Points</label>
-              <input type="number" placeholder="100" value={formData.points} onChange={e => setFormData({...formData, points: parseInt(e.target.value)})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50" />
+              <input type="number" placeholder="100" value={formData.points || 0} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 0})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50" />
             </div>
           </div>
-          <div>
-            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Course</label>
-            <select value={formData.courseCode} onChange={e => setFormData({...formData, courseCode: e.target.value})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50">
-              <option value="">Select Course</option>
-              {courses.map(c => <option key={c.id} value={c.code}>{c.title} ({c.code})</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Course</label>
+              <select value={formData.courseCode || ''} onChange={e => setFormData({...formData, courseCode: e.target.value})} className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50">
+                <option value="">Select Course</option>
+                {courses.map(c => <option key={c.id} value={c.code}>{c.title} ({c.code})</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Progress Status</label>
+              <select 
+                value={formData.progressStatus || 'Not Started'} 
+                onChange={e => setFormData({...formData, progressStatus: e.target.value as any})} 
+                className="w-full p-4 border-4 border-black rounded-xl font-bold outline-none focus:bg-gray-50"
+              >
+                <option value="Not Started">Not Started</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+                <option value="Needs Review">Needs Review</option>
+              </select>
+            </div>
           </div>
           <div>
             <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Rubric (Optional)</label>
@@ -260,6 +281,36 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+  const [lessonQuizPreview, setLessonQuizPreview] = useState<Partial<Question>[]>([]);
+
+  const handleGenerateLessonQuiz = async () => {
+    if (!currentLesson.content.trim()) {
+      alert('Please add lesson content first to generate a quiz.');
+      return;
+    }
+
+    setIsGeneratingQuiz(true);
+    try {
+      const questions = await generateQuizFromLessonContent(currentLesson.content);
+      setLessonQuizPreview(questions);
+    } catch (error) {
+      console.error('Quiz Generation Error:', error);
+      alert('Failed to generate quiz. Please try again.');
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  const addLessonQuiz = () => {
+    const questions = lessonQuizPreview as Question[];
+    setCurrentLesson({
+      ...currentLesson,
+      questions: [...(currentLesson.questions || []), ...questions]
+    });
+    setLessonQuizPreview([]);
+  };
+
   const handleAIScan = async () => {
     if (!rawText.trim()) return;
     setIsScanning(true);
@@ -419,6 +470,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     learningObjectives: [],
     materials: []
   });
+  const [editingLessonIndex, setEditingLessonIndex] = useState<number | null>(null);
 
   const [newObjective, setNewObjective] = useState('');
   const [newMaterial, setNewMaterial] = useState<Partial<CourseMaterial>>({
@@ -441,7 +493,9 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     content: '',
     contentType: 'video',
     videoUrl: '',
-    pdfUrl: ''
+    pdfUrl: '',
+    fileUrl: '',
+    fileName: ''
   });
 
   const handleSaveCourse = () => {
@@ -482,12 +536,33 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       alert("Lesson title and content are required.");
       return;
     }
-    const lesson = { ...currentLesson, id: `lesson-${Date.now()}` } as Lesson;
+    const lesson = { 
+      ...currentLesson, 
+      id: currentLesson.id || `lesson-${Date.now()}`,
+      duration: currentLesson.duration || '15 mins',
+      type: currentLesson.contentType === 'video' ? 'video' : 'reading'
+    } as Lesson;
+
+    const updatedLessons = [...(newCourse.lessons || [])];
+    if (editingLessonIndex !== null) {
+      updatedLessons[editingLessonIndex] = lesson;
+    } else {
+      updatedLessons.push(lesson);
+    }
+
     setNewCourse(prev => ({
       ...prev,
-      lessons: [...(prev.lessons || []), lesson]
+      lessons: updatedLessons
     }));
-    setCurrentLesson({ title: '', content: '', contentType: 'video', videoUrl: '', pdfUrl: '' });
+    setCurrentLesson({ title: '', content: '', contentType: 'video', videoUrl: '', pdfUrl: '', fileUrl: '', fileName: '' });
+    setEditingLessonIndex(null);
+  };
+
+  const editLesson = (index: number) => {
+    if (!newCourse.lessons) return;
+    const lesson = newCourse.lessons[index];
+    setCurrentLesson(lesson);
+    setEditingLessonIndex(index);
   };
 
   const handleSaveAssignment = async (assignment: Assignment, file: File | null) => {
@@ -561,7 +636,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         <>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 border-b-8 border-black pb-10">
             <div>
-              <h2 className="text-7xl font-black uppercase tracking-tighter italic leading-none text-blue-900">Mock Repository.</h2>
+              <h2 className="text-5xl font-black uppercase tracking-tighter italic leading-none text-blue-900">Mock Repository.</h2>
               <p className="text-blue-600 font-black uppercase text-sm mt-4 tracking-[0.3em]">Official EAES Standard Creator</p>
             </div>
             <button 
@@ -630,7 +705,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         <>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 border-b-8 border-black pb-10">
             <div>
-              <h2 className="text-7xl font-black uppercase tracking-tighter italic leading-none text-purple-900">Curriculum Forge.</h2>
+              <h2 className="text-5xl font-black uppercase tracking-tighter italic leading-none text-purple-900">Curriculum Forge.</h2>
               <p className="text-purple-600 font-black uppercase text-sm mt-4 tracking-[0.3em]">National Lesson Architect</p>
             </div>
             <button 
@@ -678,7 +753,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         <>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 border-b-8 border-black pb-10">
             <div>
-              <h2 className="text-7xl font-black uppercase tracking-tighter italic leading-none text-orange-900">Assignment Forge.</h2>
+              <h2 className="text-5xl font-black uppercase tracking-tighter italic leading-none text-orange-900">Assignment Forge.</h2>
               <p className="text-orange-600 font-black uppercase text-sm mt-4 tracking-[0.3em]">National Task Architect</p>
             </div>
             <button 
@@ -697,10 +772,25 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <div key={assignment.id} className="bg-white p-10 rounded-[4rem] border-8 border-black shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between group">
                 <div className="space-y-6">
                   <div className="flex justify-between items-start">
-                    <span className="px-4 py-1 rounded-xl text-[10px] font-black uppercase border-2 border-black bg-orange-100">
-                      {assignment.courseCode}
-                    </span>
-                    <span className="text-xs font-black text-gray-400 uppercase">Due: {new Date(assignment.dueDate).toLocaleDateString()}</span>
+                    <div className="flex gap-2 items-center">
+                      <span className="px-4 py-1 rounded-xl text-[10px] font-black uppercase border-2 border-black bg-orange-100">
+                        {assignment.courseCode}
+                      </span>
+                      {assignment.progressStatus && (
+                        <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border-2 border-black ${
+                          assignment.progressStatus === 'Completed' ? 'bg-green-400' :
+                          assignment.progressStatus === 'In Progress' ? 'bg-blue-400' :
+                          assignment.progressStatus === 'Needs Review' ? 'bg-orange-400' :
+                          'bg-gray-200'
+                        }`}>
+                          {assignment.progressStatus}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className="text-xs font-black text-gray-400 uppercase">Due: {new Date(assignment.dueDate).toLocaleDateString()}</span>
+                      <span className="text-[10px] font-black text-blue-500 uppercase tracking-tighter">{getEthiopianDateString(assignment.dueDate)}</span>
+                    </div>
                   </div>
                   <h4 className="text-4xl font-black uppercase italic tracking-tighter leading-none group-hover:text-orange-700 transition-all">{assignment.title}</h4>
                   <p className="text-sm font-bold text-gray-500 italic line-clamp-2">{assignment.description}</p>
@@ -726,11 +816,14 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </>
       ) : activeTab === 'submissions' ? (
         <div className="space-y-10">
-          <h2 className="text-7xl font-black uppercase tracking-tighter italic leading-none text-green-900">Assignment Submissions.</h2>
+          <h2 className="text-5xl font-black uppercase tracking-tighter italic leading-none text-green-900">Assignment Submissions.</h2>
           {assignments.map(assignment => (
             <div key={assignment.id} className="bg-white p-10 rounded-[4rem] border-8 border-black shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]">
               <h3 className="text-3xl font-black uppercase italic">{assignment.title}</h3>
-              <p className="text-gray-500 font-black uppercase text-sm mb-6">{assignment.courseCode} - Due: {new Date(assignment.dueDate).toLocaleDateString()}</p>
+              <div className="flex flex-col mb-6">
+                <p className="text-gray-500 font-black uppercase text-sm">{assignment.courseCode} - Due: {new Date(assignment.dueDate).toLocaleDateString()}</p>
+                <p className="text-blue-500 font-black uppercase text-xs tracking-widest">{getEthiopianDateString(assignment.dueDate)}</p>
+              </div>
               
               <div className="space-y-4">
                 {submissions[assignment.id]?.length > 0 ? (
@@ -781,7 +874,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           <div className="w-full max-w-6xl space-y-12 py-12">
             <div className="flex justify-between items-center border-b-[10px] border-black pb-10">
               <div className="flex flex-col">
-                <h3 className="text-6xl md:text-8xl font-black uppercase italic tracking-tighter leading-none">{editingCourseId ? 'Update Module.' : 'Course Architect.'}</h3>
+                <h3 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter leading-none">{editingCourseId ? 'Update Module.' : 'Course Architect.'}</h3>
                 <div className="flex gap-4 mt-6">
                   {[1, 2, 3].map(step => (
                     <div key={step} className={`w-12 h-12 rounded-full border-4 border-black flex items-center justify-center font-black text-xl ${courseWizardStep >= step ? 'bg-purple-600 text-white' : 'bg-gray-100'}`}>
@@ -806,11 +899,11 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">Course Title</label>
-                    <input placeholder="Advanced Physics Core" className="w-full p-8 border-4 border-black rounded-[2.5rem] text-3xl font-black outline-none" value={newCourse.title} onChange={e => setNewCourse({...newCourse, title: e.target.value})} />
+                    <input placeholder="Advanced Physics Core" className="w-full p-8 border-4 border-black rounded-[2.5rem] text-3xl font-black outline-none" value={newCourse.title || ''} onChange={e => setNewCourse({...newCourse, title: e.target.value})} />
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">Course Code</label>
-                    <input placeholder="PHYS-G12-A" className="w-full p-8 border-4 border-black rounded-[2.5rem] text-3xl font-black outline-none" value={newCourse.code} onChange={e => setNewCourse({...newCourse, code: e.target.value})} />
+                    <input placeholder="PHYS-G12-A" className="w-full p-8 border-4 border-black rounded-[2.5rem] text-3xl font-black outline-none" value={newCourse.code || ''} onChange={e => setNewCourse({...newCourse, code: e.target.value})} />
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">Grade Level</label>
@@ -838,7 +931,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   </div>
                   <div className="md:col-span-2 space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">Description</label>
-                    <textarea placeholder="Comprehensive guide to..." className="w-full p-8 border-4 border-black rounded-[2.5rem] text-xl font-black outline-none h-32" value={newCourse.description} onChange={e => setNewCourse({...newCourse, description: e.target.value})} />
+                    <textarea placeholder="Comprehensive guide to..." className="w-full p-8 border-4 border-black rounded-[2.5rem] text-xl font-black outline-none h-32" value={newCourse.description || ''} onChange={e => setNewCourse({...newCourse, description: e.target.value})} />
                   </div>
                 </>
               )}
@@ -888,21 +981,88 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       </div>
                       <div className="space-y-4">
                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Content Type</label>
-                        <select className="w-full p-6 border-4 border-black rounded-2xl font-black" value={currentLesson.contentType} onChange={e => setCurrentLesson({...currentLesson, contentType: e.target.value as 'video' | 'pdf'})}>
+                        <select className="w-full p-6 border-4 border-black rounded-2xl font-black" value={currentLesson.contentType} onChange={e => setCurrentLesson({...currentLesson, contentType: e.target.value as 'video' | 'reading' | 'document'})}>
                           <option value="video">Video Stream</option>
-                          <option value="pdf">Secure PDF</option>
+                          <option value="reading">Secure PDF</option>
+                          <option value="document">Document (PDF/Word/PPT)</option>
                         </select>
                       </div>
                       <div className="md:col-span-2 space-y-4">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Resource URL</label>
-                        <input className="w-full p-6 border-4 border-black rounded-2xl font-black" placeholder={currentLesson.contentType === 'video' ? 'YouTube URL' : 'PDF URL'} value={currentLesson.contentType === 'video' ? currentLesson.videoUrl : currentLesson.pdfUrl} onChange={e => setCurrentLesson({...currentLesson, [currentLesson.contentType === 'video' ? 'videoUrl' : 'pdfUrl']: e.target.value})} />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                          {currentLesson.contentType === 'document' ? 'Upload Lesson Document' : 'Resource URL'}
+                        </label>
+                        {currentLesson.contentType === 'document' ? (
+                          <div className="flex flex-col gap-4">
+                            <input 
+                              type="file" 
+                              accept=".pdf,.doc,.docx,.ppt,.pptx"
+                              className="w-full p-6 border-4 border-black rounded-2xl font-black bg-white"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    setCurrentLesson({
+                                      ...currentLesson,
+                                      fileUrl: reader.result as string,
+                                      fileName: file.name
+                                    });
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                            {currentLesson.fileName && (
+                              <p className="text-xs font-black text-blue-600 uppercase">Selected: {currentLesson.fileName}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <input className="w-full p-6 border-4 border-black rounded-2xl font-black" placeholder={currentLesson.contentType === 'video' ? 'YouTube URL' : 'PDF URL'} value={currentLesson.contentType === 'video' ? currentLesson.videoUrl : currentLesson.pdfUrl} onChange={e => setCurrentLesson({...currentLesson, [currentLesson.contentType === 'video' ? 'videoUrl' : 'pdfUrl']: e.target.value})} />
+                        )}
                       </div>
                       <div className="md:col-span-2 space-y-4">
                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Lesson Content (Markdown)</label>
                         <textarea className="w-full p-6 border-4 border-black rounded-2xl font-black h-40" value={currentLesson.content} onChange={e => setCurrentLesson({...currentLesson, content: e.target.value})} />
+                        <div className="flex justify-end">
+                          <button 
+                            onClick={handleGenerateLessonQuiz}
+                            disabled={isGeneratingQuiz || !currentLesson.content.trim()}
+                            className="px-6 py-3 bg-blue-600 text-white rounded-xl border-4 border-black font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all disabled:opacity-50"
+                          >
+                            {isGeneratingQuiz ? 'Generating...' : '✨ Generate Quiz from Content'}
+                          </button>
+                        </div>
                       </div>
+
+                      {lessonQuizPreview.length > 0 && (
+                        <div className="md:col-span-2 space-y-6 bg-white p-8 rounded-[2rem] border-4 border-black">
+                          <div className="flex justify-between items-center border-b-4 border-black pb-4">
+                            <h5 className="text-xl font-black uppercase italic text-blue-900">Quiz Preview</h5>
+                            <button onClick={() => setLessonQuizPreview([])} className="text-rose-600 font-black uppercase text-xs">Discard</button>
+                          </div>
+                          <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
+                            {lessonQuizPreview.map((q, idx) => (
+                              <div key={idx} className="p-4 bg-gray-50 border-2 border-black rounded-xl">
+                                <p className="font-bold text-sm italic">"{q.text}"</p>
+                                <p className="text-[10px] font-black text-blue-600 uppercase mt-1">{q.type} • {q.points} Points</p>
+                              </div>
+                            ))}
+                          </div>
+                          <button 
+                            onClick={addLessonQuiz}
+                            className="w-full py-4 bg-black text-white rounded-xl border-4 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] hover:translate-y-1 transition-all"
+                          >
+                            Add {lessonQuizPreview.length} Questions to Lesson
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <button onClick={addLesson} className="w-full py-6 bg-purple-600 text-white rounded-2xl border-4 border-black font-black uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all">＋ Add Lesson to Curriculum</button>
+                    <button onClick={addLesson} className="w-full py-6 bg-purple-600 text-white rounded-2xl border-4 border-black font-black uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all">
+                      {editingLessonIndex !== null ? 'Update Lesson' : '＋ Add Lesson to Curriculum'}
+                    </button>
+                    {editingLessonIndex !== null && (
+                      <button onClick={() => { setEditingLessonIndex(null); setCurrentLesson({ title: '', content: '', contentType: 'video', videoUrl: '', pdfUrl: '', fileUrl: '', fileName: '' }); }} className="w-full mt-4 text-rose-600 font-black uppercase text-xs">Cancel Edit</button>
+                    )}
                   </div>
 
                   {newCourse.lessons && newCourse.lessons.length > 0 && (
@@ -910,13 +1070,22 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       <h5 className="text-2xl font-black uppercase italic">Curriculum Inventory</h5>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {newCourse.lessons.map((l, idx) => (
-                          <div key={idx} className="bg-white p-6 rounded-3xl border-4 border-black flex justify-between items-center">
-                            <p className="font-black italic truncate pr-4">{idx + 1}. {l.title}</p>
-                            <button onClick={() => {
-                               const ls = [...(newCourse.lessons || [])];
-                               ls.splice(idx, 1);
-                               setNewCourse({...newCourse, lessons: ls});
-                            }} className="text-rose-600 font-black">✕</button>
+                          <div key={idx} className="bg-white p-6 rounded-3xl border-4 border-black flex justify-between items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="flex items-center gap-4 overflow-hidden">
+                              <span className="w-8 h-8 bg-black text-white rounded-full flex items-center justify-center font-black text-xs shrink-0">{idx + 1}</span>
+                              <div className="truncate">
+                                <p className="font-black italic truncate pr-4">{l.title}</p>
+                                <p className="text-[10px] font-bold text-purple-600 uppercase">{l.contentType}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => editLesson(idx)} className="text-purple-600 font-black text-[10px] p-2">EDIT</button>
+                              <button onClick={() => {
+                                 const ls = [...(newCourse.lessons || [])];
+                                 ls.splice(idx, 1);
+                                 setNewCourse({...newCourse, lessons: ls});
+                              }} className="text-rose-600 font-black text-[10px] p-2">✕</button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1047,7 +1216,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         <div className="fixed inset-0 z-[6000] bg-white overflow-y-auto p-6 md:p-20 flex flex-col items-center">
           <div className="w-full max-w-6xl space-y-12 py-12">
             <div className="flex justify-between items-center border-b-[10px] border-black pb-10">
-              <h3 className="text-6xl md:text-8xl font-black uppercase italic tracking-tighter leading-none">{editingExamId ? 'Update Forge.' : 'Exam Forge.'}</h3>
+              <h3 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter leading-none">{editingExamId ? 'Update Forge.' : 'Exam Forge.'}</h3>
               <button onClick={() => { setIsCreating(false); setEditingExamId(null); }} className="w-20 h-20 bg-rose-50 border-8 border-black rounded-[2.5rem] flex items-center justify-center text-4xl font-black">✕</button>
             </div>
 
@@ -1068,7 +1237,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                    onClick={() => fileInputRef.current?.click()}
                    className="w-full h-80 border-8 border-dashed border-purple-300 rounded-[4rem] flex flex-col items-center justify-center gap-6 cursor-pointer hover:bg-purple-100 transition-all bg-white shadow-inner group"
                  >
-                    <div className="text-9xl group-hover:scale-110 transition-transform duration-500">📄</div>
+                    <div className="text-7xl group-hover:scale-110 transition-transform duration-500">📄</div>
                     <div className="space-y-2">
                        <p className="text-2xl font-black uppercase italic tracking-tighter">Click to Select Artifact</p>
                        <p className="text-xs font-bold text-gray-400 uppercase tracking-[0.2em]">Supports PDF and Word (.docx) formats</p>
@@ -1228,7 +1397,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     </div>
                     <div className="space-y-4">
                       <label className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">Exam Title</label>
-                      <input placeholder="National Mock Series" className={`w-full p-8 border-4 border-black rounded-[2.5rem] text-3xl font-black outline-none ${errors.title ? 'border-rose-500 bg-rose-50' : ''}`} value={newExam.title} onChange={e => { setNewExam({...newExam, title: e.target.value}); setErrors({...errors, title: ''}); }} />
+                      <input placeholder="National Mock Series" className={`w-full p-8 border-4 border-black rounded-[2.5rem] text-3xl font-black outline-none ${errors.title ? 'border-rose-500 bg-rose-50' : ''}`} value={newExam.title || ''} onChange={e => { setNewExam({...newExam, title: e.target.value}); setErrors({...errors, title: ''}); }} />
                       {errors.title && <p className="text-rose-600 text-xs font-black uppercase ml-4">{errors.title}</p>}
                     </div>
                     <div className="space-y-4">
@@ -1268,7 +1437,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     </div>
                     <div className="space-y-4">
                       <label className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">Duration (Minutes)</label>
-                      <input type="number" className={`w-full p-8 border-4 border-black rounded-[2.5rem] text-3xl font-black outline-none ${errors.duration ? 'border-rose-500 bg-rose-50' : ''}`} value={newExam.durationMinutes} onChange={e => { setNewExam({...newExam, durationMinutes: parseInt(e.target.value)}); setErrors({...errors, duration: ''}); }} />
+                      <input type="number" className={`w-full p-8 border-4 border-black rounded-[2.5rem] text-3xl font-black outline-none ${errors.duration ? 'border-rose-500 bg-rose-50' : ''}`} value={newExam.durationMinutes || 0} onChange={e => { setNewExam({...newExam, durationMinutes: parseInt(e.target.value) || 0}); setErrors({...errors, duration: ''}); }} />
                       {errors.duration && <p className="text-rose-600 text-xs font-black uppercase ml-4">{errors.duration}</p>}
                     </div>
                     <div className="space-y-4">
@@ -1300,7 +1469,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         <div className="md:col-span-3 space-y-2">
-                          <textarea placeholder="The derivative of sin(x) is..." className={`w-full p-10 border-4 border-black rounded-[3rem] font-black h-32 text-2xl bg-gray-50 outline-none ${errors.qText ? 'border-rose-500' : ''}`} value={currentQuestion.text} onChange={e => { setCurrentQuestion({...currentQuestion, text: e.target.value}); setErrors({...errors, qText: ''}); }} />
+                          <textarea placeholder="The derivative of sin(x) is..." className={`w-full p-10 border-4 border-black rounded-[3rem] font-black h-32 text-2xl bg-gray-50 outline-none ${errors.qText ? 'border-rose-500' : ''}`} value={currentQuestion.text || ''} onChange={e => { setCurrentQuestion({...currentQuestion, text: e.target.value}); setErrors({...errors, qText: ''}); }} />
                           {errors.qText && <p className="text-rose-600 text-xs font-black uppercase ml-4">{errors.qText}</p>}
                         </div>
                         <div className="space-y-4">
@@ -1313,12 +1482,12 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         </div>
                         <div className="space-y-4">
                           <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Category</label>
-                          <input placeholder="Ex: Calculus" className={`w-full p-6 border-4 border-black rounded-2xl font-black ${errors.qCategory ? 'border-rose-500' : ''}`} value={currentQuestion.category} onChange={e => { setCurrentQuestion({...currentQuestion, category: e.target.value}); setErrors({...errors, qCategory: ''}); }} />
+                          <input placeholder="Ex: Calculus" className={`w-full p-6 border-4 border-black rounded-2xl font-black ${errors.qCategory ? 'border-rose-500' : ''}`} value={currentQuestion.category || ''} onChange={e => { setCurrentQuestion({...currentQuestion, category: e.target.value}); setErrors({...errors, qCategory: ''}); }} />
                           {errors.qCategory && <p className="text-rose-600 text-[10px] font-black uppercase">{errors.qCategory}</p>}
                         </div>
                         <div className="space-y-4">
                           <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Points</label>
-                          <input placeholder="Points" type="number" className={`w-full p-6 border-4 border-black rounded-2xl font-black ${errors.qPoints ? 'border-rose-500' : ''}`} value={currentQuestion.points} onChange={e => { setCurrentQuestion({...currentQuestion, points: parseInt(e.target.value)}); setErrors({...errors, qPoints: ''}); }} />
+                          <input placeholder="Points" type="number" className={`w-full p-6 border-4 border-black rounded-2xl font-black ${errors.qPoints ? 'border-rose-500' : ''}`} value={currentQuestion.points || 0} onChange={e => { setCurrentQuestion({...currentQuestion, points: parseInt(e.target.value) || 0}); setErrors({...errors, qPoints: ''}); }} />
                           {errors.qPoints && <p className="text-rose-600 text-[10px] font-black uppercase">{errors.qPoints}</p>}
                         </div>
                       </div>
@@ -1329,7 +1498,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           <input 
                             placeholder="Type the correct answer" 
                             className={`w-full p-8 border-4 border-black rounded-[2.5rem] text-2xl font-black outline-none bg-green-50 ${errors.qAnswer ? 'border-rose-500' : ''}`}
-                            value={currentQuestion.correctAnswer as string}
+                            value={currentQuestion.correctAnswer || ''}
                             onChange={e => { setCurrentQuestion({...currentQuestion, correctAnswer: e.target.value}); setErrors({...errors, qAnswer: ''}); }}
                           />
                           {errors.qAnswer && <p className="text-rose-600 text-xs font-black uppercase ml-4">{errors.qAnswer}</p>}
@@ -1342,7 +1511,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                  <input 
                                    placeholder={`Option ${String.fromCharCode(65+i)}`}
                                    className={`w-full p-8 border-4 border-black rounded-[2rem] font-black text-xl ${currentQuestion.correctAnswer === i ? 'bg-green-100' : 'bg-white'} ${errors.qOptions ? 'border-rose-500' : ''}`}
-                                   value={opt}
+                                   value={opt || ''}
                                    onChange={e => {
                                      const opts = [...(currentQuestion.options || [])];
                                      opts[i] = e.target.value;
@@ -1452,7 +1621,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       <button 
                         onClick={handleSaveExam} 
                         disabled={isValidating}
-                        className="flex-[2] py-16 bg-blue-700 text-white rounded-[5rem] border-[10px] border-black font-black uppercase text-5xl md:text-7xl shadow-[30px_30px_0px_0px_rgba(239,51,64,1)] hover:translate-y-4 transition-all disabled:opacity-50"
+                        className="flex-[2] py-16 bg-blue-700 text-white rounded-[5rem] border-[10px] border-black font-black uppercase text-3xl md:text-5xl shadow-[30px_30px_0px_0px_rgba(239,51,64,1)] hover:translate-y-4 transition-all disabled:opacity-50"
                       >
                         {isValidating ? 'Validating...' : editingExamId ? 'Sync Updates' : 'Deploy Registry'}
                       </button>

@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the IFTU platform (Student, Teacher, Admin).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "teacher", "admin", "teaching_assistant", "content_creator"] },
+        "points": { "type": "number" },
+        "completedLessons": { "type": "array", "items": { "type": "string" } },
+        "completedCourses": { "type": "array", "items": { "type": "string" } },
+        "grade": { "type": "string" },
+        "stream": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "An educational course containing multiple lessons.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "lessons": { "type": "array", "items": { "$ref": "Lesson" } }
+      }
+    },
+    "Lesson": {
+      "title": "Lesson",
+      "description": "A single lesson within a course.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "videoUrl": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data."
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Course content and lessons."
+    },
+    "/exams/{examId}": {
+      "schema": "Exam",
+      "description": "National and mock exams."
+    },
+    "/news/{newsId}": {
+      "schema": "News",
+      "description": "National educational news bulletins."
+    },
+    "/notifications/{notifId}": {
+      "schema": "AppNotification",
+      "description": "User-specific notifications."
+    },
+    "/study_halls/{hallId}/messages/{msgId}": {
+      "schema": "ChatMessage",
+      "description": "Real-time chat messages in study halls."
+    }
+  }
+}

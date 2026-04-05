@@ -257,11 +257,25 @@ const ExamEngine: React.FC<ExamEngineProps> = ({ exam, onComplete, onCancel }) =
           </div>
           <div className="space-y-4">
             <h2 className="text-6xl font-black uppercase italic tracking-tighter leading-none">Enter Secure Hall</h2>
-            <div className="max-w-md mx-auto pt-4">
+            <div className="max-w-md mx-auto pt-4 space-y-4">
               <p className="text-xl font-bold text-slate-600 leading-relaxed">
                 Subject: <span className="text-blue-600 font-black">{exam.subject}</span><br/>
                 Identity Verification: <span className="text-green-600 font-black">Ready</span>
               </p>
+              
+              {exam.keyConcepts && exam.keyConcepts.length > 0 && (
+                <div className="bg-blue-50 border-4 border-black rounded-3xl p-6 text-left space-y-3">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-blue-900 border-b-2 border-blue-200 pb-2">Unit 1: Key Concepts & Meanings</h4>
+                  <div className="max-h-48 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                    {exam.keyConcepts.map((concept, idx) => (
+                      <div key={idx} className="space-y-1">
+                        <p className="text-sm font-black uppercase text-blue-800">{concept.term}</p>
+                        <p className="text-xs font-bold text-slate-600 italic leading-snug">{concept.meaning}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex flex-col gap-6 pt-6">
@@ -290,7 +304,7 @@ const ExamEngine: React.FC<ExamEngineProps> = ({ exam, onComplete, onCancel }) =
               <div className="absolute -top-4 -right-4 bg-black text-white px-6 py-2 rounded-xl text-xl font-black italic shadow-lg">ALARM</div>
             </div>
             <div className="space-y-4">
-              <h2 className="text-7xl md:text-[10rem] font-black uppercase italic tracking-tighter leading-[0.75]">
+              <h2 className="text-5xl md:text-7xl font-black uppercase italic tracking-tighter leading-[0.75]">
                 {showWarning === '6m' ? '6 Minutes' : '1 Minute'} <br/> Remaining.
               </h2>
               <div className="h-4 w-64 bg-black mx-auto rounded-full overflow-hidden">
@@ -367,7 +381,7 @@ const ExamEngine: React.FC<ExamEngineProps> = ({ exam, onComplete, onCancel }) =
                       <span className="text-xs font-black uppercase tracking-widest text-blue-600">Unit Verification: {currentIdx + 1} / {exam.questions.length}</span>
                     </div>
                     <div className="mt-20 space-y-16">
-                        <p className="text-5xl md:text-7xl font-black leading-[0.95] tracking-tighter italic text-slate-900 border-l-[15px] border-black pl-10">
+                        <p className="text-3xl md:text-5xl font-black leading-[0.95] tracking-tighter italic text-slate-900 border-l-[15px] border-black pl-10">
                           {currentQuestion.text}
                         </p>
                         <div className="grid grid-cols-1 gap-8">
@@ -532,7 +546,7 @@ const ExamEngine: React.FC<ExamEngineProps> = ({ exam, onComplete, onCancel }) =
             <div className="absolute top-0 left-0 w-full h-6 ethiopian-gradient"></div>
             
             <div className="text-center space-y-4 shrink-0 mb-8">
-              <h2 className="text-5xl md:text-7xl font-black uppercase italic tracking-tighter leading-[0.8]">Review <br/>Script</h2>
+              <h2 className="text-3xl md:text-5xl font-black uppercase italic tracking-tighter leading-[0.8]">Review <br/>Script</h2>
               <p className="text-xl font-black text-gray-400 uppercase tracking-[0.2em] italic">
                 Preliminary Score: <span className={reviewData.score >= reviewData.total / 2 ? 'text-green-600' : 'text-rose-600'}>{reviewData.score} / {reviewData.total}</span>
               </p>

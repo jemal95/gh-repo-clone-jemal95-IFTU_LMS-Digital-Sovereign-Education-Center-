@@ -1,13 +1,15 @@
 
 import React from 'react';
-import { ExamResult } from '../types';
+import { ExamResult, User } from '../types';
 
 interface ReportCardProps {
   result: ExamResult;
+  user?: User;
   onClose: () => void;
+  onViewCertificate?: () => void;
 }
 
-const ReportCard: React.FC<ReportCardProps> = ({ result, onClose }) => {
+const ReportCard: React.FC<ReportCardProps> = ({ result, user, onClose, onViewCertificate }) => {
   const percentage = Math.round((result.score / result.totalPoints) * 100);
 
   const handlePrint = () => {
@@ -21,19 +23,26 @@ const ReportCard: React.FC<ReportCardProps> = ({ result, onClose }) => {
         
         {/* Document Metadata Header */}
         <div className="absolute top-0 left-0 w-full h-8 ethiopian-gradient"></div>
-        <div className="flex justify-between items-start pt-4">
-           <div className="flex flex-col gap-1">
-             <span className="text-[10px] font-black uppercase text-gray-400 tracking-[0.3em]">Official National Transcript</span>
-             <span className="text-[10px] font-black uppercase text-blue-600 tracking-[0.3em]">Trace: #{result.examId.slice(0,12)}</span>
-           </div>
-           <div className="w-24 h-24 bg-gray-50 border-4 border-black rounded-2xl flex items-center justify-center text-4xl shadow-md rotate-3">
-             📜
-           </div>
+        <div className="flex flex-col items-center text-center pt-8 space-y-2">
+           <h1 className="text-sm md:text-md font-bold tracking-widest uppercase text-gray-500">
+             OROMIYA EDUCATION BUREAU | BIIROO BARNOOTA OROMIYAA
+           </h1>
+           <h2 className="text-xs md:text-sm font-bold tracking-wider uppercase text-gray-400">
+             WEST ARSI ZONE | KORE WOREDA
+           </h2>
+           <h3 className="text-2xl md:text-3xl font-black text-blue-900 uppercase tracking-tight italic">
+             IFTU SECONDARY SCHOOL
+           </h3>
+           <div className="w-32 h-1 bg-blue-500 mt-2"></div>
         </div>
 
         <div className="flex flex-col md:flex-row justify-between items-center gap-16 border-b-8 border-black pb-16 relative z-10">
            <div className="space-y-6 text-center md:text-left">
               <h2 className="text-7xl md:text-9xl font-black uppercase tracking-tighter italic text-blue-900 leading-[0.75]">National <br/>Statement.</h2>
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Official Result For</p>
+                <p className="text-4xl font-black italic text-black">{user?.name || 'Sovereign Student'}</p>
+              </div>
               <div className="inline-flex items-center gap-3 bg-black text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl">
                  <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
                  Blockchain Verified Artifact
@@ -90,6 +99,15 @@ const ReportCard: React.FC<ReportCardProps> = ({ result, onClose }) => {
         </div>
 
         <div className="flex flex-col md:flex-row gap-8 no-print">
+          {percentage >= 50 && onViewCertificate && (
+            <button 
+              type="button"
+              onClick={onViewCertificate}
+              className="flex-1 py-10 bg-blue-600 text-white border-8 border-black rounded-[3rem] font-black uppercase text-xl shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-none transition-all cursor-pointer"
+            >
+              📜 View Official Certificate
+            </button>
+          )}
           <button 
             type="button"
             onClick={handlePrint}

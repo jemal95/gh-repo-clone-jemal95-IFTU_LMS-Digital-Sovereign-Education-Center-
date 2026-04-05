@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Assignment, AssignmentSubmission, User } from '../types';
 import { dbService } from '../services/dbService';
+import { getEthiopianDateString } from '../lib/dateUtils';
 import { FileText, Calendar, CheckCircle, Clock, AlertCircle, Upload, Download, ExternalLink } from 'lucide-react';
 
 interface AssignmentPortalProps {
@@ -116,9 +117,14 @@ export const AssignmentPortal: React.FC<AssignmentPortalProps> = ({ currentUser,
                         {submission ? 'Submitted' : isOverdue ? 'Overdue' : 'Pending'}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs font-black text-gray-400 uppercase">
-                      <Calendar size={14} />
-                      {new Date(assignment.dueDate).toLocaleDateString()}
+                    <div className="flex flex-col items-end gap-1 text-xs font-black text-gray-400 uppercase">
+                      <div className="flex items-center gap-2">
+                        <Calendar size={14} />
+                        {new Date(assignment.dueDate).toLocaleDateString()}
+                      </div>
+                      <span className="text-[10px] font-black text-blue-500 tracking-tighter">
+                        {getEthiopianDateString(assignment.dueDate)}
+                      </span>
                     </div>
                   </div>
 
@@ -160,7 +166,10 @@ export const AssignmentPortal: React.FC<AssignmentPortalProps> = ({ currentUser,
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gray-50 p-4 rounded-2xl border-4 border-black">
                     <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Due Date</p>
-                    <p className="font-black italic">{new Date(selectedAssignment.dueDate).toLocaleDateString()}</p>
+                    <p className="font-black italic text-sm">{new Date(selectedAssignment.dueDate).toLocaleDateString()}</p>
+                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mt-1">
+                      {getEthiopianDateString(selectedAssignment.dueDate)}
+                    </p>
                   </div>
                   <div className="bg-gray-50 p-4 rounded-2xl border-4 border-black">
                     <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Max Points</p>

@@ -9,10 +9,11 @@ const CURRENT_YEAR = new Date().getFullYear();
 export const NATIONAL_CENTER_INFO = {
   name: "IFTU National Digital Sovereign Education Center",
   shortName: "IFTU NDC",
-  location: "Menelik II Square, Addis Ababa, Ethiopia",
-  coordinates: { lat: 9.0336, lng: 38.7615 },
-  mapsLink: "https://goo.gl/maps/KcLgTHsz6WKtSeda7/",
-  authorizedBy: "Jemal Fano Haji"
+  location: "Ethiopia, Oromia region, West Arsi Zone, Kore woreda",
+  coordinates: { lat: 7.15, lng: 39.05 },
+  mapsLink: "https://www.google.com/maps/search/Kore+woreda+West+Arsi+Zone+Oromia+Ethiopia/",
+  authorizedBy: "Jemal Fano Haji",
+  founderPhoto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Jemal&backgroundColor=b6e3f4"
 };
 
 export const MOCK_COURSES: Course[] = [

@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, RotateCcw } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, Sparkles } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import { Course, Lesson, Question, Language, User, AssignmentSubmission } from '../types';
 import { getLessonDeepDive } from '../services/geminiService';
+import Markdown from 'react-markdown';
 import { dbService } from '../services/dbService';
 import LiveInterviewer from './LiveInterviewer';
 import CertificatePortal from './CertificatePortal';
@@ -41,16 +43,24 @@ const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({ src, title, onEnd
 
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
+    
+    // Handle YouTube Shorts
+    if (url.includes('/shorts/')) {
+      const id = url.split('/shorts/')[1].split(/[?#]/)[0];
+      return `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&origin=${window.location.origin}`;
+    }
+
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = url.match(regExp);
     const id = (match && match[2].length === 11) ? match[2] : null;
+    
     if (id) {
       return `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&origin=${window.location.origin}`;
     }
     return url;
   };
 
-  const isYouTube = src.includes('youtube.com') || src.includes('youtu.be');
+  const isYouTube = src.includes('youtube.com') || src.includes('youtu.be') || src.includes('youtube-nocookie.com');
   const sanitizedSrc = getEmbedUrl(src);
 
   useEffect(() => {
@@ -62,7 +72,7 @@ const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({ src, title, onEnd
     const video = videoRef.current;
     if (!video || isYouTube) {
       if (isYouTube) {
-        const timer = setTimeout(() => setIsInitialLoading(false), 1500);
+        const timer = setTimeout(() => setIsInitialLoading(false), 1000);
         return () => clearTimeout(timer);
       }
       return;
@@ -179,7 +189,15 @@ const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({ src, title, onEnd
       )}
 
       {isYouTube && sanitizedSrc ? (
-        <iframe className="w-full h-full" src={sanitizedSrc} title={title} frameBorder="0" allowFullScreen onLoad={() => setIsInitialLoading(false)}></iframe>
+        <iframe 
+          className="w-full h-full" 
+          src={sanitizedSrc} 
+          title={title} 
+          frameBorder="0" 
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+          allowFullScreen 
+          onLoad={() => setIsInitialLoading(false)}
+        ></iframe>
       ) : (
         <>
           <video ref={videoRef} src={src} className="w-full h-full cursor-pointer" onClick={togglePlay} playsInline />
@@ -394,8 +412,10 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
+  const [showCompletionScreen, setShowCompletionScreen] = useState(false);
 
   const completedLessonIds = currentUser?.completedLessons || [];
+  const isCourseComplete = course.lessons.every(l => completedLessonIds.includes(l.id));
 
   useEffect(() => {
     const fetchSubmission = async () => {
@@ -502,7 +522,15 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 1500);
       } else if (isCourseComplete) {
-        setTimeout(() => setShowCertificate(true), 1500);
+        setTimeout(() => {
+          setShowCompletionScreen(true);
+          confetti({
+            particleCount: 150,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#009b44', '#ffcd00', '#ef3340', '#3b82f6'] // Ethiopian + Blue
+          });
+        }, 1500);
       } else {
         setTimeout(() => alert("Lesson Completed! You have finished all lessons in this course."), 1500);
       }
@@ -555,19 +583,51 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
                     setActiveLesson(lesson); 
                     setDeepDive({ content: '', type: null }); 
                     setShowQuiz(false);
+                    setShowCompletionScreen(false);
                   }}
-                  className={`w-full text-left p-6 rounded-[2rem] border-4 border-black font-black transition-all ${activeLesson.id === lesson.id ? 'bg-blue-600 text-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : completedLessonIds.includes(lesson.id) ? 'bg-green-50' : 'bg-white'}`}
+                  className={`w-full text-left p-6 rounded-[2rem] border-4 border-black font-black transition-all ${activeLesson.id === lesson.id && !showCompletionScreen ? 'bg-blue-600 text-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : completedLessonIds.includes(lesson.id) ? 'bg-green-50' : 'bg-white'}`}
                 >
                   {idx + 1}. {lesson.title}
                 </button>
               ))}
             </div>
           </div>
+
+          {isCourseComplete && (
+            <button 
+              onClick={() => setShowCompletionScreen(true)}
+              className="w-full p-6 bg-yellow-400 border-4 border-black rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all flex items-center justify-center gap-3"
+            >
+              <span>🎓</span> Claim Certificate
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto bg-[#f0f2f5] p-6 md:p-12">
           <div className="max-w-5xl mx-auto space-y-12 pb-24">
-            {showQuiz && activeLesson.questions ? (
+            {showCompletionScreen ? (
+              <div className="bg-white p-12 md:p-24 rounded-[5rem] border-8 border-black shadow-[30px_30px_0px_0px_rgba(34,197,94,1)] text-center space-y-12 animate-scaleIn">
+                <div className="text-9xl">🏆</div>
+                <div className="space-y-4">
+                  <h2 className="text-6xl md:text-8xl font-black uppercase italic tracking-tighter text-blue-900 leading-none">Course <br/>Mastered!</h2>
+                  <p className="text-2xl font-bold text-gray-500 uppercase tracking-widest">You have successfully cataloged all knowledge modules.</p>
+                </div>
+                <div className="flex flex-col md:flex-row gap-6 justify-center">
+                  <button 
+                    onClick={() => setShowCertificate(true)}
+                    className="px-12 py-8 bg-[#00D05A] text-white rounded-[2.5rem] border-8 border-black font-black uppercase text-2xl shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] hover:translate-y-2 transition-all"
+                  >
+                    Claim Official Certificate →
+                  </button>
+                  <button 
+                    onClick={() => setShowCompletionScreen(false)}
+                    className="px-12 py-8 bg-white text-black rounded-[2.5rem] border-8 border-black font-black uppercase text-2xl shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] hover:translate-y-2 transition-all"
+                  >
+                    Review Lessons
+                  </button>
+                </div>
+              </div>
+            ) : showQuiz && activeLesson.questions ? (
               <LessonQuiz 
                 questions={activeLesson.questions} 
                 onComplete={handleFinish} 
@@ -598,7 +658,9 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
 
                     <div className="space-y-6">
                       <h4 className="text-2xl font-black uppercase italic">Task Description</h4>
-                      <p className="text-xl leading-relaxed text-gray-700 bg-gray-50 p-8 rounded-3xl border-4 border-black">{activeLesson.content}</p>
+                      <div className="prose prose-xl max-w-none text-gray-700 bg-gray-50 p-8 rounded-3xl border-4 border-black">
+                        <Markdown>{activeLesson.content}</Markdown>
+                      </div>
                     </div>
 
                     {submission ? (
@@ -653,6 +715,34 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
                       </div>
                     )}
                   </div>
+                ) : activeLesson.contentType === 'document' ? (
+                  <div className="w-full bg-white border-8 border-black rounded-[3.5rem] p-12 md:p-20 shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] space-y-10">
+                    <div className="flex items-center gap-8 border-b-8 border-black pb-8">
+                       <div className="w-24 h-24 bg-blue-600 text-white rounded-3xl border-4 border-black flex items-center justify-center text-5xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">📚</div>
+                       <div>
+                         <h3 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter">Lesson Resource</h3>
+                         <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Download or view lesson materials</p>
+                       </div>
+                    </div>
+
+                    <div className="space-y-8">
+                      <div className="p-12 border-4 border-black rounded-[3rem] bg-gray-50 flex flex-col items-center justify-center space-y-6 text-center">
+                        <div className="text-8xl">📄</div>
+                        <h4 className="text-3xl font-black uppercase italic">{activeLesson.fileName || 'Lesson Document'}</h4>
+                        <a 
+                          href={activeLesson.fileUrl} 
+                          download={activeLesson.fileName || 'lesson-document'}
+                          className="px-12 py-6 bg-black text-white border-4 border-black rounded-2xl font-black uppercase text-lg shadow-[8px_8px_0px_0px_rgba(59,130,246,1)] hover:translate-y-1 transition-all"
+                        >
+                          📥 Download Document
+                        </a>
+                      </div>
+                      
+                      {activeLesson.fileName?.toLowerCase().endsWith('.pdf') && (
+                        <SecurePDFViewer url={activeLesson.fileUrl || ''} title={activeLesson.title} />
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <SecurePDFViewer url={activeLesson.pdfUrl || ''} title={activeLesson.title} />
                 )}
@@ -660,12 +750,25 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
                 <div className="bg-white p-10 md:p-20 rounded-[4rem] border-8 border-black shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] space-y-12">
                   <div className="flex flex-col gap-6">
                     <h1 className="text-5xl md:text-8xl font-black uppercase tracking-tighter italic leading-none">{activeLesson.title}</h1>
-                    <div className="flex gap-4">
-                      <button onClick={() => handleDeepDive('simpler')} className="bg-yellow-400 border-4 border-black px-6 py-2 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 transition-all">AI Simpler</button>
-                      <button onClick={() => handleDeepDive('advanced')} className="bg-blue-600 text-white border-4 border-black px-6 py-2 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 transition-all">AI Advanced</button>
+                    <div className="flex flex-wrap gap-4">
+                      <button 
+                        onClick={() => handleDeepDive('simpler')} 
+                        className="flex items-center gap-2 bg-yellow-400 border-4 border-black px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 transition-all hover:bg-yellow-300"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        Explain This Simply
+                      </button>
+                      <button 
+                        onClick={() => handleDeepDive('advanced')} 
+                        className="bg-blue-600 text-white border-4 border-black px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 transition-all hover:bg-blue-500"
+                      >
+                        Advanced Context
+                      </button>
                     </div>
                   </div>
-                  <p className="text-2xl leading-relaxed text-gray-700">{activeLesson.content}</p>
+                  <div className="prose prose-2xl max-w-none text-gray-700 leading-relaxed">
+                    <Markdown>{activeLesson.content}</Markdown>
+                  </div>
                   <div className="pt-10 flex justify-center">
                     <button 
                       onClick={() => handleFinish()} 
@@ -689,7 +792,13 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
                 </div>
 
                 {(deepDive.type || isDeepDiving) && (
-                  <div className="bg-blue-50 border-8 border-black rounded-[4rem] p-12 md:p-20 shadow-[25px_25px_0px_0px_rgba(59,130,246,1)]">
+                  <div className="bg-blue-50 border-8 border-black rounded-[4rem] p-12 md:p-20 shadow-[25px_25px_0px_0px_rgba(59,130,246,1)] relative">
+                    <button 
+                      onClick={() => setDeepDive({ content: '', type: null })}
+                      className="absolute top-8 right-8 w-12 h-12 bg-white border-4 border-black rounded-xl flex items-center justify-center text-xl hover:bg-gray-100 transition-colors"
+                    >
+                      ✕
+                    </button>
                     <h4 className="text-4xl font-black uppercase italic mb-8">{deepDive.type === 'simpler' ? 'Simpler logic' : 'Advanced context'}</h4>
                     {isDeepDiving ? <p className="animate-pulse">Synthesizing...</p> : <p className="text-2xl leading-relaxed italic">{deepDive.content}</p>}
                   </div>
@@ -709,11 +818,7 @@ const CourseViewer: React.FC<CourseViewerProps> = ({
         />
       )}
     </div>
-  )
+  );
 };
 
 export default CourseViewer;
-
-
-
-
