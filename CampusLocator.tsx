@@ -1,26 +1,41 @@
 
 import React, { useState } from 'react';
-import { findNearbyColleges } from '../services/geminiService';
-import { NATIONAL_CENTER_INFO } from '../constants';
+import { findNearbyColleges } from './geminiService';
+import { NATIONAL_CENTER_INFO } from './constants';
 
 const CampusLocator: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<{ text: string, places: any[] } | null>(null);
   const [type, setType] = useState<'TVET' | 'High School'>('TVET');
+  const [error, setError] = useState<string | null>(null);
 
   const handleLocate = () => {
+    setError(null);
     setLoading(true);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(async (pos) => {
-        const data = await findNearbyColleges(pos.coords.latitude, pos.coords.longitude, type);
-        setResults(data);
-        setLoading(false);
+        try {
+          const data = await findNearbyColleges(pos.coords.latitude, pos.coords.longitude, type);
+          if (!data || !data.places?.length) {
+            setError('No nearby centers were found. Try again later or adjust the location.');
+            setResults(data || { text: '', places: [] });
+          } else {
+            setResults(data);
+          }
+        } catch (err) {
+          console.error('CampusLocator locate error:', err);
+          setError('Unable to locate nearby institutions. Please try again.');
+          setResults({ text: '', places: [] });
+        } finally {
+          setLoading(false);
+        }
       }, (err) => {
-        alert("Location access denied. Please enable GPS in your browser settings.");
+        console.error('Geolocation error:', err);
+        setError('Location access denied. Please enable GPS in your browser settings.');
         setLoading(false);
       });
     } else {
-      alert("Geolocation is not supported by this browser.");
+      setError('Geolocation is not supported by this browser.');
       setLoading(false);
     }
   };
@@ -76,33 +91,44 @@ const CampusLocator: React.FC = () => {
           </a>
         </div>
 
-        {results && (
+        {(error || results) && (
           <div className="space-y-8 animate-fadeIn">
             <h3 className="text-5xl font-black uppercase italic tracking-tighter text-blue-900 ml-4">Registry Matches</h3>
-            <div className="space-y-6">
-              {results.places.length > 0 ? results.places.map((place, i) => (
-                <a 
-                  key={i} 
-                  href={place.uri} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block bg-white border-8 border-black rounded-[3rem] p-8 shadow-[12px_12px_0px_0px_rgba(34,197,94,1)] hover:-translate-y-2 transition-all group"
-                >
-                  <div className="flex justify-between items-start">
-                    <h4 className="text-3xl font-black uppercase italic tracking-tighter group-hover:text-blue-600">{place.title}</h4>
-                    <span className="text-3xl">📍</span>
+
+            {error ? (
+              <div className="bg-red-100 border-4 border-red-400 text-red-700 rounded-[3rem] p-8 font-black uppercase text-center text-sm">
+                ⚠️ {error}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {results?.places?.length > 0 ? (
+                  results.places.map((place, i) => (
+                    <a
+                      key={i}
+                      href={place.uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block bg-white border-8 border-black rounded-[3rem] p-8 shadow-[12px_12px_0px_0px_rgba(34,197,94,1)] hover:-translate-y-2 transition-all group"
+                    >
+                      <div className="flex justify-between items-start">
+                        <h4 className="text-3xl font-black uppercase italic tracking-tighter group-hover:text-blue-600">{place.title}</h4>
+                        <span className="text-3xl">📍</span>
+                      </div>
+                      {place.snippet && (
+                        <p className="mt-4 text-gray-400 font-bold uppercase text-[10px] tracking-widest leading-relaxed">{place.snippet}</p>
+                      )}
+                      <div className="mt-6 flex items-center gap-4 text-blue-600 font-black uppercase text-xs">
+                        Explore on Digital Map →
+                      </div>
+                    </a>
+                  ))
+                ) : (
+                  <div className="bg-gray-50 border-4 border-dashed border-black/20 rounded-[3rem] p-12 text-center">
+                    <p className="font-black text-gray-400 uppercase italic">No direct matches found in mapping registry.</p>
                   </div>
-                  {place.snippet && <p className="mt-4 text-gray-400 font-bold uppercase text-[10px] tracking-widest leading-relaxed">{place.snippet}</p>}
-                  <div className="mt-6 flex items-center gap-4 text-blue-600 font-black uppercase text-xs">
-                    Explore on Digital Map →
-                  </div>
-                </a>
-              )) : (
-                <div className="bg-gray-50 border-4 border-dashed border-black/20 rounded-[3rem] p-12 text-center">
-                  <p className="font-black text-gray-400 uppercase italic">No direct matches found in mapping registry.</p>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

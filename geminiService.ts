@@ -276,7 +276,14 @@ export const generateExamQuestions = async (
 };
 
 export const findNearbyColleges = async (lat: number, lng: number, type: 'TVET' | 'High School' = 'TVET') => {
-  const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '' });
+  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '';
+  if (!apiKey) {
+    console.error('Gemini API key is not defined. Set NEXT_PUBLIC_GEMINI_API_KEY or GEMINI_API_KEY.');
+    return { text: 'API key not available', places: [] };
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -286,15 +293,24 @@ export const findNearbyColleges = async (lat: number, lng: number, type: 'TVET' 
         toolConfig: { retrievalConfig: { latLng: { latitude: lat, longitude: lng } } }
       }
     });
+
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    const places = Array.isArray(chunks)
+      ? chunks.map((chunk: any) => ({
+          title: chunk.maps?.title || 'Educational Institution',
+          uri: chunk.maps?.uri || '#',
+          snippet: chunk.maps?.placeAnswerSources?.[0]?.reviewSnippets?.[0] || ''
+        }))
+      : [];
+
     return {
-      text: response.text,
-      places: response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
-        title: chunk.maps?.title || "Educational Institution",
-        uri: chunk.maps?.uri || "#",
-        snippet: chunk.maps?.placeAnswerSources?.[0]?.reviewSnippets?.[0] || ""
-      })) || []
+      text: response.text || '',
+      places
     };
-  } catch (error) { return null; }
+  } catch (error) {
+    console.error('findNearbyColleges error:', error);
+    return { text: 'Could not retrieve nearby institutions', places: [] };
+  }
 };
 
 export const getSovereignInsights = async (data: any) => {

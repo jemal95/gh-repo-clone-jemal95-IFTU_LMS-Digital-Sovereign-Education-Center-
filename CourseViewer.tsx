@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, RotateCcw } from 'lucide-react';
 import { Course, Lesson, Question, Language, User, AssignmentSubmission } from '../types';
-import { getLessonDeepDive } from '../services/geminiService';
+import { getLessonDeepDive } from './geminiService';
 import { dbService } from '../services/dbService';
 import LiveInterviewer from './LiveInterviewer';
 import CertificatePortal from './CertificatePortal';

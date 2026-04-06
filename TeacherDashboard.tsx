@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Exam, Question, Grade, Stream, QuestionType, Course, Lesson, Difficulty, Assignment, AssignmentSubmission, EducationLevel, ExamType, CourseMaterial } from '../types';
-import { parseExamDocument, generateExamQuestions, parseExamFromDocument } from '../services/geminiService';
+import { parseExamDocument, generateExamQuestions, parseExamFromDocument } from './geminiService';
 import { validateExam } from '../services/validationService';
 import { dbService } from '../services/dbService';
 import { auth } from '../firebase';

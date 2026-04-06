@@ -10,7 +10,7 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, TrendingUp, Award, Target, BookOpen, ChevronRight } from 'lucide-react';
-import * as geminiService from '../services/geminiService';
+import * as geminiService from './geminiService';
 
 interface PerformancePortalProps {
   results: ExamResult[];

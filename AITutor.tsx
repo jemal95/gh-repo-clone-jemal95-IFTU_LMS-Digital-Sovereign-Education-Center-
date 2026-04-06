@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { askTutor } from '../services/geminiService';
+import { askTutor } from './geminiService';
 import { Language } from '../types';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { Paperclip, X, FileText, Mic, MicOff, Send, Brain, Volume2 } from 'lucide-react';

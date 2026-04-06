@@ -17,7 +17,7 @@ import {
   BarChart, Bar, Cell, PieChart, Pie, AreaChart, Area
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
-import * as geminiService from '../services/geminiService';
+import * as geminiService from './geminiService';
 
 const AssignmentModal = ({ isOpen, onClose, onSave, assignment }: { isOpen: boolean, onClose: () => void, onSave: (assignment: Assignment, file: File | null) => void, assignment: Assignment | null }) => {
   const [formData, setFormData] = useState<Assignment>(assignment || { id: '', title: '', description: '', dueDate: '', points: 0, courseCode: '', rubricUrl: '', status: 'draft' });
